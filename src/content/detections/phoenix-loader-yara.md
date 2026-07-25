@@ -10,6 +10,8 @@ maturity: sample-validated
 severity: critical
 actor: muddywater
 research: [phoenix-unmasked]
+# Hidden while the Phoenix write-ups are unpublished.
+draft: true
 tags: [muddywater, phoenix, yara, packer]
 telemetry:
   - Files on disk scanned with YARA

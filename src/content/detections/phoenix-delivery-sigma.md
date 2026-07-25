@@ -10,6 +10,8 @@ maturity: untested
 severity: high
 actor: muddywater
 research: [phoenix-unmasked, hunting-phoenix]
+# Hidden while the Phoenix write-ups are unpublished.
+draft: true
 tags: [muddywater, phoenix, sigma, maldoc, phishing]
 telemetry:
   - Sysmon Event ID 1 (process creation) with ParentImage and CommandLine

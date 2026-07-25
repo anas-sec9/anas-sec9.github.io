@@ -204,8 +204,10 @@ None of that came from a vendor report. It came from taking the thing apart, wri
 first principles, and then proving them on the real sample.
 
 This run is also why the BugSleep rules in the [detection library](/detections) carry a
-**lab-validated** label while the Phoenix ones mostly don't — the difference is exactly this post,
-and I'd rather the labels tell you that than quietly imply the same confidence everywhere.
+**lab-validated** label rather than a weaker one. The difference between that and
+[sample-validated](/log/what-untested-means) is exactly this post — a rule that matched a file
+versus a rule I watched fire on a live host — and I'd rather the labels tell you that than quietly
+imply the same confidence everywhere.
 
 Full validation report, the Splunk detection pack, Suricata rules, and everything else are on
 GitHub:

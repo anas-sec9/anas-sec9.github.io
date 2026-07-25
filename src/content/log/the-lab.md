@@ -41,16 +41,17 @@ Reverse engineering does not happen on the lab network. That's an isolated FLARE
 network with FakeNet-NG standing in for the entire internet, so a sample resolves and beacons to me
 instead of to its operator. Snapshot before detonation, revert after, no exceptions.
 
-Keeping it off the detection lab costs me the ability to detonate a live sample straight onto
-instrumented hosts — which is exactly the gap that has the Phoenix Sigma and Suricata rules sitting
-at [untested](/detections/phoenix-delivery-sigma) rather than lab-validated. That's the trade, and
-I'd rather have it that way round than the alternative.
+Keeping it off the detection lab costs me something real: I can't detonate a fresh sample straight
+onto instrumented hosts. Anything reversed on the FLARE-VM has to be carried across deliberately
+before its rules can earn a [lab-validated](/log/what-untested-means) label, which is why some of my
+rules sit at untested for a while. That's the trade, and I'd rather have it that way round than the
+alternative.
 
 ## What it still can't do
 
-**No proxy layer.** Which means anything that lives in proxy logs — like the
-[Phoenix beacon rule](/detections/phoenix-beacon-proxy-sigma) — can't be validated here yet. Adding
-a TLS-terminating proxy is the next build item.
+**No proxy layer.** Anything that lives in proxy logs rather than on the wire — HTTPS beacon URIs,
+user-agents, anything behind TLS — can't be validated here yet. Adding a TLS-terminating proxy is the
+next build item.
 
 **No real EDR.** Sysmon is excellent telemetry and it is not the same thing as an EDR agent. Rules
 written against EDR-specific telemetry can't be tested on this stack, so I don't write them.

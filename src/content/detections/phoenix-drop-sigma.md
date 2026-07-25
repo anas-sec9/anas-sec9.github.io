@@ -10,6 +10,8 @@ maturity: untested
 severity: high
 actor: muddywater
 research: [phoenix-unmasked]
+# Hidden while the Phoenix write-ups are unpublished.
+draft: true
 tags: [muddywater, phoenix, sigma, defense-evasion]
 telemetry:
   - Sysmon Event ID 11 (FileCreate) covering C:\Users\Public

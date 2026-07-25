@@ -33,9 +33,9 @@ The decrypt loop on its own is an SSE subtract — legitimate crypto and plenty 
 similar shapes. The process hit-list on its own (`msedge.exe`, `chrome.exe`, `anydesk.exe`…) appears
 in enormous numbers of benign programs, including security tooling.
 
-Together, inside a sub-400KB PE, they're BugSleep. That's the same discipline the
-[Phoenix core rule](/detections/phoenix-core-yara) uses, and the reason neither of them ORs weak
-signals together.
+Together, inside a sub-400KB PE, they're BugSleep. That's the discipline every rule in this
+library follows: never OR weak signals, and never anchor on something that isn't specific to the
+thing you're hunting.
 
 Only the `JL` displacement is wildcarded, so a recompile that shifts the loop's position still
 matches.

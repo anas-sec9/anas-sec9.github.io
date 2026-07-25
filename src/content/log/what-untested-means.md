@@ -55,7 +55,7 @@ quietly lives, and readers can't see it from the outside. A YARA rule anchored o
 a YARA rule anchored on the malware's own code look identical in a blog post. The only difference a
 reader can check is whether the author told them which one they were looking at.
 
-I got this wrong once already — my first attempt at the
-[Phoenix core rule](/detections/phoenix-core-yara) anchored on MSVC boilerplate and would have
-matched every Visual Studio binary in existence. A friend caught it. These labels exist so the next
-one gets caught by me first.
+I got this wrong once already. On a cross-sample YARA rule I diffed two builds of the same
+backdoor, anchored on the longest shared byte runs, and shipped it — except those runs were the MSVC
+C runtime, so the rule would have matched every Visual Studio binary in existence rather than the
+malware. A friend caught it. These labels exist so the next one gets caught by me first.

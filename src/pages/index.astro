@@ -19,6 +19,9 @@ const log = live(await getCollection('log')).sort(byDate);
 const featured = research.find((r) => r.data.featured) ?? research[0];
 const rest = research.filter((r) => r.id !== featured?.id).slice(0, 3);
 
+/** If the pinned post isn't the newest one, don't call it the latest. */
+const featuredLabel = featured?.id === research[0]?.id ? 'Latest analysis' : 'Start here';
+
 /** Counts shown on the homepage, so "View all" can hide when it leads nowhere new. */
 const SHOWN = { research: 4, detections: 5, actors: 2, log: 4 };
 const more = (total: number, shown: number) => total > shown;
@@ -79,7 +82,7 @@ const stats = [
     featured && (
       <section class="sect">
         <div class="wrap wrap--wide">
-          <SectionHead n="01" label="Latest analysis" />
+          <SectionHead n="01" label={featuredLabel} />
           <ResearchCard
             variant="feature"
             n="01"

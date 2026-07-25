@@ -10,6 +10,8 @@ maturity: sample-validated
 severity: critical
 actor: muddywater
 research: [phoenix-unmasked, hunting-phoenix]
+# Hidden while the Phoenix write-ups are unpublished.
+draft: true
 tags: [muddywater, phoenix, suricata, c2]
 telemetry:
   - Suricata on a span/tap with DNS and TLS parsers enabled

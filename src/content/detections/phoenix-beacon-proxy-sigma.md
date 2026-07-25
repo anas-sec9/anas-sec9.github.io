@@ -10,6 +10,8 @@ maturity: untested
 severity: high
 actor: muddywater
 research: [phoenix-unmasked, hunting-phoenix]
+# Hidden while the Phoenix write-ups are unpublished.
+draft: true
 tags: [muddywater, phoenix, sigma, c2, proxy]
 telemetry:
   - Web proxy logs with user-agent, host and URI stem fields

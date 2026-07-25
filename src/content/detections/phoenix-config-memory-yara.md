@@ -10,6 +10,8 @@ maturity: sample-validated
 severity: critical
 actor: muddywater
 research: [phoenix-unmasked]
+# Hidden while the Phoenix write-ups are unpublished.
+draft: true
 tags: [muddywater, phoenix, yara, memory-forensics]
 telemetry:
   - Process memory dumps (procdump, HollowsHunter) or a full memory image
