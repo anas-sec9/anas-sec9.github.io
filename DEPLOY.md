@@ -16,8 +16,16 @@ On GitHub, create a new repository named **exactly**:
 anas-sec9.github.io
 ```
 
-The name has to match `<your-username>.github.io`. Anything else gives you a project site at
-`anas-sec9.github.io/repo-name` instead of the root.
+The name has to match `<your-username>.github.io` — **including the digit**. A repo called
+`anas-sec.github.io` owned by `anas-sec9` is not a user site; it's a project site served at
+`anas-sec9.github.io/anas-sec.github.io/`, and the CSS won't load because `base` is `/`.
+
+If you got this wrong, no need to start over: **Settings → General → Repository name** to rename,
+then point your local clone at the new URL:
+
+```bash
+git remote set-url origin https://github.com/anas-sec9/anas-sec9.github.io.git
+```
 
 Settings for the new repo:
 
@@ -94,6 +102,20 @@ deliberate.
 ---
 
 ## Troubleshooting
+
+**Push rejected: "refusing to allow a Personal Access Token to create or update workflow
+`.github/workflows/deploy.yml` without `workflow` scope".** Your token can't write to
+`.github/workflows/`. Fix the token rather than deleting the workflow:
+
+- *Classic PAT* — Settings → Developer settings → Personal access tokens → Tokens (classic) → open
+  the token → tick **`workflow`** → Update. The token string is unchanged, so your saved Windows
+  credential still works. Just push again.
+- *Fine-grained PAT* — Repository permissions → **Workflows: Read and write**.
+- *Or skip tokens* — `gh auth login` (GitHub CLI) or switch the remote to SSH.
+
+Last resort if you can't change the token: `git rm --cached .github/workflows/deploy.yml`, commit
+and push the rest, then create the workflow file through the GitHub web editor, which isn't subject
+to the scope restriction.
 
 **Site loads but has no CSS or images.** The `base` in `astro.config.mjs` doesn't match where the
 site is actually served. For a user site it must be `'/'`. For a project repo it must be

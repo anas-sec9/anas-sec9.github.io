@@ -19,6 +19,10 @@ const log = live(await getCollection('log')).sort(byDate);
 const featured = research.find((r) => r.data.featured) ?? research[0];
 const rest = research.filter((r) => r.id !== featured?.id).slice(0, 3);
 
+/** Counts shown on the homepage, so "View all" can hide when it leads nowhere new. */
+const SHOWN = { research: 4, detections: 5, actors: 2, log: 4 };
+const more = (total: number, shown: number) => total > shown;
+
 /** Families I've actually opened — from research posts and from actor tooling lists. */
 const families = new Set<string>([
   ...research.map((r) => r.data.malware).filter((m): m is string => Boolean(m)),
@@ -101,7 +105,7 @@ const stats = [
             label="Research"
             title="Reverse engineering write-ups"
             blurb="Full teardowns — how the sample was unpacked, what the config actually said, and which claims I could and couldn't reproduce."
-            moreHref="/research"
+            moreHref={more(research.length, SHOWN.research) ? '/research' : undefined}
           />
           <div class="cards">
             {rest.map((r, i) => (
@@ -131,10 +135,10 @@ const stats = [
             label="Detection library"
             title="Rules you can actually deploy"
             blurb="Each one carries its ATT&CK mapping, the telemetry it needs, the false positives I found, and an honest maturity label."
-            moreHref="/detections"
+            moreHref={more(detections.length, SHOWN.detections) ? '/detections' : undefined}
           />
           <div class="panel">
-            {detections.slice(0, 5).map((d) => (
+            {detections.slice(0, SHOWN.detections).map((d) => (
               <DetectionRow
                 id={d.id}
                 title={d.data.title}
@@ -163,10 +167,10 @@ const stats = [
             label="Adversaries"
             title="Who I'm tracking"
             blurb="Profiles built from my own analysis where I have it, and clearly marked as inherited where I don't."
-            moreHref="/actors"
+            moreHref={more(actors.length, SHOWN.actors) ? '/actors' : undefined}
           />
           <div class="cards cards--2">
-            {actors.slice(0, 2).map((a, i) => (
+            {actors.slice(0, SHOWN.actors).map((a, i) => (
               <ActorCard
                 id={a.id}
                 n={idx(i + 1)}
@@ -190,9 +194,15 @@ const stats = [
     log.length > 0 && (
       <section class="sect sect--last">
         <div class="wrap wrap--wide">
-          <SectionHead n="05" label="Build log" title="From the bench" moreHref="/log" moreLabel="All entries" />
+          <SectionHead
+            n="05"
+            label="Build log"
+            title="From the bench"
+            moreHref={more(log.length, SHOWN.log) ? '/log' : undefined}
+            moreLabel="All entries"
+          />
           <div class="loglist">
-            {log.slice(0, 4).map((l) => (
+            {log.slice(0, SHOWN.log).map((l) => (
               <a href={href(`/log/${l.id}`)} class="logrow">
                 <span class="logrow__date mono">{fmtStamp(l.data.date)}</span>
                 <span class="logrow__title">{l.data.title}</span>

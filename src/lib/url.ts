@@ -39,6 +39,11 @@ export function readingTime(body: string | undefined): string {
   return `${Math.max(1, Math.round(words / 210))} min`;
 }
 
+/** "1 profile" / "2 profiles" — pass an explicit plural for irregular words. */
+export function plural(n: number, one: string, many = one + 's'): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export function slugify(s: string): string {
   return s
     .toLowerCase()

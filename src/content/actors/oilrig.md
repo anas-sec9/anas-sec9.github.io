@@ -6,6 +6,8 @@ firstSeen: '2014'
 motivation: [Espionage, Intelligence collection]
 attribution: inherited
 status: tracking
+# Hidden until the Saitama write-up is finished — flip to false to publish.
+draft: true
 summary: >-
   Long-running Iran-nexus espionage group with a habit of building command-and-control into
   protocols nobody inspects. I've reversed Saitama, their DNS-tunnelling backdoor — the write-up

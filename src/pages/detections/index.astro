@@ -3,6 +3,7 @@ import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import PageHeader from '../../components/PageHeader.astro';
 import DetectionRow from '../../components/DetectionRow.astro';
+import { plural } from '../../lib/url';
 
 const rules = (await getCollection('detections'))
   .filter((d) => !d.data.draft)
@@ -31,7 +32,7 @@ const facets = [
     n="02"
     label="Detection library"
     title="Rules, with their receipts"
-    count={`${rules.length} rules`}
+    count={plural(rules.length, "rule")}
     blurb="Every entry states the telemetry it needs, the false positives I've actually hit, and how far it's been validated. A rule that has only been compiled says so."
   />
 
@@ -67,7 +68,7 @@ const facets = [
       </div>
     </div>
 
-    <p class="resultcount mono" id="result-count">{rules.length} rules</p>
+    <p class="resultcount mono" id="result-count">{plural(rules.length, "rule")}</p>
 
     <div class="panel" id="rule-list">
       {
