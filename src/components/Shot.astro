@@ -1,10 +1,5 @@
 ---
-/**
- * Figure slot. Pass `src` once the screenshot exists in /public/shots/.
- * Without `src` it renders a clearly-marked placeholder describing what
- * belongs there — so an unfinished post looks unfinished instead of
- * silently missing evidence.
- */
+/** Figure. Renders a labelled placeholder when no `src` is supplied. */
 interface Props {
   src?: string;
   alt?: string;

@@ -5,7 +5,5 @@ dist/
 *.log
 .env
 .env.production
-
-# Build and authoring notes — kept locally, never published
 docs/
 DEPLOY.md
