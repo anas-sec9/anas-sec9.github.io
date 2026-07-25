@@ -1,0 +1,47 @@
+---
+import Base from '../layouts/Base.astro';
+import { href } from '../lib/url';
+---
+
+<Base title="Not found">
+  <div class="wrap nf">
+    <p class="kicker kicker--plain"><span class="kicker__n">404</span><span>No match</span></p>
+    <h1 class="display nf__h">Nothing here fired.</h1>
+    <p class="nf__p">
+      That path doesn't resolve to anything. It may have been renamed, or it may never have existed —
+      I'd check the sections below before assuming the former.
+    </p>
+    <div class="nf__links">
+      <a href={href('/research')} class="arrow">Research</a>
+      <a href={href('/detections')} class="arrow">Detections</a>
+      <a href={href('/actors')} class="arrow">Actors</a>
+      <a href={href('/log')} class="arrow">Log</a>
+    </div>
+  </div>
+</Base>
+
+<style>
+  .nf {
+    padding-block: clamp(4rem, 2rem + 8vw, 9rem);
+    max-width: 46rem;
+  }
+
+  .nf__h {
+    margin-top: var(--s-4);
+    font-size: var(--t-display);
+    font-weight: 400;
+  }
+
+  .nf__p {
+    margin-top: var(--s-5);
+    color: var(--ink-2);
+    line-height: 1.7;
+  }
+
+  .nf__links {
+    margin-top: var(--s-6);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-5);
+  }
+</style>

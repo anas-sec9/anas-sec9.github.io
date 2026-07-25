@@ -1,0 +1,280 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import DetectionRow from '../../components/DetectionRow.astro';
+
+const rules = (await getCollection('detections'))
+  .filter((d) => !d.data.draft)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+const uniq = (xs: string[]) => [...new Set(xs)].sort();
+
+const formats = uniq(rules.map((r) => r.data.format));
+const surfaces = uniq(rules.map((r) => r.data.surface));
+const maturities = ['production', 'lab-validated', 'sample-validated', 'untested'].filter((m) =>
+  rules.some((r) => r.data.maturity === m)
+);
+
+const facets = [
+  { key: 'format', label: 'Format', values: formats },
+  { key: 'surface', label: 'Surface', values: surfaces },
+  { key: 'maturity', label: 'Maturity', values: maturities },
+];
+---
+
+<Base
+  title="Detections"
+  description="Sigma, YARA, Suricata and Splunk rules with ATT&CK mappings, required telemetry, and honest maturity labels."
+>
+  <PageHeader
+    n="02"
+    label="Detection library"
+    title="Rules, with their receipts"
+    count={`${rules.length} rules`}
+    blurb="Every entry states the telemetry it needs, the false positives I've actually hit, and how far it's been validated. A rule that has only been compiled says so."
+  />
+
+  <div class="wrap wrap--wide body">
+    <div class="filters">
+      <div class="search">
+        <span class="search__icon" aria-hidden="true">⌕</span>
+        <input
+          type="search"
+          id="rule-search"
+          placeholder="Search rules, techniques, families…"
+          autocomplete="off"
+          aria-label="Search detections"
+        />
+      </div>
+
+      <div class="facets">
+        {
+          facets.map((f) => (
+            <div class="facet" data-facet={f.key}>
+              <span class="facet__label">{f.label}</span>
+              <div class="facet__chips">
+                <button class="chip is-on" data-value="">All</button>
+                {f.values.map((v) => (
+                  <button class="chip" data-value={v}>
+                    {v.replace('-', ' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <p class="resultcount mono" id="result-count">{rules.length} rules</p>
+
+    <div class="panel" id="rule-list">
+      {
+        rules.map((d) => (
+          <DetectionRow
+            id={d.id}
+            title={d.data.title}
+            summary={d.data.summary}
+            format={d.data.format}
+            surface={d.data.surface}
+            maturity={d.data.maturity}
+            severity={d.data.severity}
+            attack={d.data.attack}
+            tags={d.data.tags}
+          />
+        ))
+      }
+    </div>
+
+    <p class="noresults" id="no-results" hidden>
+      No rules match that. Clear a filter, or <a href="#" class="link" id="reset">reset everything</a>.
+    </p>
+
+    {rules.length === 0 && <p class="empty">No rules published yet.</p>}
+  </div>
+</Base>
+
+<style>
+  .body {
+    padding-block: var(--s-6) var(--s-8);
+  }
+
+  /* ═══ Filters ═══ */
+  .filters {
+    display: grid;
+    gap: var(--s-5);
+    padding-bottom: var(--s-5);
+  }
+
+  .search {
+    position: relative;
+    max-width: 30rem;
+  }
+
+  .search__icon {
+    position: absolute;
+    left: 0.9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ink-4);
+    font-size: 1.1rem;
+    pointer-events: none;
+  }
+
+  .search input {
+    width: 100%;
+    padding: 0.7rem 0.9rem 0.7rem 2.4rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-2);
+    color: var(--ink);
+    font-size: var(--t-sm);
+    transition: border-color var(--dur) var(--ease);
+  }
+
+  .search input::placeholder {
+    color: var(--ink-4);
+  }
+
+  .search input:focus {
+    outline: none;
+    border-color: var(--accent-line);
+  }
+
+  .search input::-webkit-search-cancel-button {
+    filter: invert(0.6);
+  }
+
+  .facets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-6) var(--s-7);
+  }
+
+  .facet {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+  }
+
+  .facet__label {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  .facet__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  .chip {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.35em 0.7em;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    color: var(--ink-3);
+    cursor: pointer;
+    transition: all var(--dur) var(--ease);
+  }
+
+  .chip:hover {
+    color: var(--ink);
+    border-color: var(--line-strong);
+  }
+
+  .chip.is-on {
+    background: var(--accent-wash);
+    border-color: var(--accent-line);
+    color: var(--accent);
+  }
+
+  .resultcount {
+    font-size: var(--t-2xs);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    padding-block: var(--s-3);
+    border-top: 1px solid var(--line);
+  }
+
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    background: var(--bg-raised);
+    overflow: hidden;
+  }
+
+  .noresults,
+  .empty {
+    padding: var(--s-7) var(--s-4);
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+    text-align: center;
+  }
+</style>
+
+<script>
+  const list = document.getElementById('rule-list');
+  const search = document.getElementById('rule-search') as HTMLInputElement | null;
+  const countEl = document.getElementById('result-count');
+  const noResults = document.getElementById('no-results');
+  const reset = document.getElementById('reset');
+
+  if (list) {
+    const rows = [...list.querySelectorAll<HTMLElement>('.det')];
+    const active: Record<string, string> = { format: '', surface: '', maturity: '' };
+
+    function apply() {
+      const q = (search?.value ?? '').trim().toLowerCase();
+      let shown = 0;
+
+      for (const row of rows) {
+        const okFacets = Object.entries(active).every(
+          ([k, v]) => !v || row.dataset[k] === v
+        );
+        const okSearch = !q || (row.dataset.search ?? '').includes(q);
+        const visible = okFacets && okSearch;
+        row.hidden = !visible;
+        if (visible) shown++;
+      }
+
+      if (countEl) countEl.textContent = `${shown} ${shown === 1 ? 'rule' : 'rules'}`;
+      if (noResults) noResults.hidden = shown !== 0;
+      list!.hidden = shown === 0;
+    }
+
+    document.querySelectorAll<HTMLElement>('.facet').forEach((facet) => {
+      const key = facet.dataset.facet!;
+      facet.querySelectorAll<HTMLButtonElement>('.chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          facet.querySelectorAll('.chip').forEach((c) => c.classList.remove('is-on'));
+          chip.classList.add('is-on');
+          active[key] = chip.dataset.value ?? '';
+          apply();
+        });
+      });
+    });
+
+    search?.addEventListener('input', apply);
+
+    reset?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (search) search.value = '';
+      for (const k of Object.keys(active)) active[k] = '';
+      document.querySelectorAll<HTMLElement>('.facet').forEach((facet) => {
+        facet.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('is-on', i === 0));
+      });
+      apply();
+    });
+  }
+</script>

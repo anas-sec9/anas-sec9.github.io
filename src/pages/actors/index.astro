@@ -1,0 +1,63 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import ActorCard from '../../components/ActorCard.astro';
+import { idx } from '../../lib/url';
+
+const actors = (await getCollection('actors'))
+  .filter((a) => !a.data.draft)
+  .sort((a, b) => a.data.name.localeCompare(b.data.name));
+---
+
+<Base
+  title="Actors"
+  description="Adversary profiles built from first-hand analysis, with attribution confidence stated explicitly."
+>
+  <PageHeader
+    n="03"
+    label="Adversaries"
+    title="Groups I'm tracking"
+    count={`${actors.length} profiles`}
+    blurb="These profiles are built from samples I've opened myself where possible. Where a claim is inherited from published reporting rather than reproduced, the attribution field says so."
+  />
+
+  <div class="wrap wrap--wide body">
+    <div class="grid">
+      {
+        actors.map((a, i) => (
+          <ActorCard
+            id={a.id}
+            n={idx(i + 1)}
+            name={a.data.name}
+            aliases={a.data.aliases}
+            nexus={a.data.nexus}
+            summary={a.data.summary}
+            status={a.data.status}
+            attribution={a.data.attribution}
+            malware={a.data.malware}
+          />
+        ))
+      }
+    </div>
+    {actors.length === 0 && <p class="empty">No profiles published yet.</p>}
+  </div>
+</Base>
+
+<style>
+  .body {
+    padding-block: var(--s-8);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+    gap: var(--s-4);
+  }
+
+  .empty {
+    padding: var(--s-8) 0;
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+</style>

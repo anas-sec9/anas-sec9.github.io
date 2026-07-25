@@ -1,0 +1,301 @@
+---
+import { getCollection, render } from 'astro:content';
+import type { GetStaticPaths } from 'astro';
+import Base from '../../layouts/Base.astro';
+import Attack from '../../components/Attack.astro';
+import { href, fmtDate, fmtStamp } from '../../lib/url';
+import '../../styles/prose.css';
+
+export const getStaticPaths = (async () => {
+  const rules = await getCollection('detections');
+  return rules
+    .filter((r) => !r.data.draft)
+    .map((rule) => ({ params: { id: rule.id }, props: { rule } }));
+}) satisfies GetStaticPaths;
+
+const { rule } = Astro.props;
+const { Content } = await render(rule);
+const d = rule.data;
+
+const allResearch = await getCollection('research');
+const linked = allResearch.filter((r) => d.research.includes(r.id));
+
+const maturityCopy: Record<string, { label: string; cls: string; note: string }> = {
+  production: {
+    label: 'Production',
+    cls: 'badge--ok',
+    note: 'Running in a live environment with tuning applied.',
+  },
+  'lab-validated': {
+    label: 'Lab validated',
+    cls: 'badge--ok',
+    note: 'Fired end-to-end against a live detonation on the lab stack.',
+  },
+  'sample-validated': {
+    label: 'Sample validated',
+    cls: 'badge--warn',
+    note: 'Compiles and matches real samples, including ones I did not produce. Not yet fired on a live SIEM/IDS stack.',
+  },
+  untested: {
+    label: 'Untested',
+    cls: 'badge--info',
+    note: 'Written from observed behaviour. Syntax checked only — treat as a starting point.',
+  },
+};
+
+const m = maturityCopy[d.maturity];
+---
+
+<Base title={d.title} description={d.summary} type="article" date={d.date}>
+  <header class="rh">
+    <div class="wrap">
+      <a href={href('/detections')} class="rh__back mono">← Detection library</a>
+
+      <div class="rh__badges">
+        <span class="badge badge--accent">{d.format}</span>
+        <span class="badge">{d.surface}</span>
+        <span class:list={['badge', m.cls]}>{m.label}</span>
+        <span class="rh__sev" data-s={d.severity}>{d.severity}</span>
+      </div>
+
+      <h1 class="display rh__title">{d.title}</h1>
+      <p class="rh__sum lead">{d.summary}</p>
+
+      <p class="rh__date mono">
+        {fmtStamp(d.date)}{d.updated && <> · updated {fmtStamp(d.updated)}</>}
+      </p>
+    </div>
+  </header>
+
+  <div class="wrap rbody">
+    <div class="rgrid">
+      <div class="rmain">
+        <div class="prose">
+          <Content />
+        </div>
+      </div>
+
+      <aside class="rside">
+        <section class="box">
+          <p class="box__head">Maturity</p>
+          <p class="box__note">{m.note}</p>
+        </section>
+
+        {
+          d.telemetry.length > 0 && (
+            <section class="box">
+              <p class="box__head">Required telemetry</p>
+              <ul class="box__list">
+                {d.telemetry.map((t) => (
+                  <li>{t}</li>
+                ))}
+              </ul>
+            </section>
+          )
+        }
+
+        <section class="box">
+          <p class="box__head">Known false positives</p>
+          {
+            d.falsePositives.length > 0 ? (
+              <ul class="box__list">
+                {d.falsePositives.map((f) => (
+                  <li>{f}</li>
+                ))}
+              </ul>
+            ) : (
+              <p class="box__note">
+                None found yet — which is not the same as none existing. Tune before you alert on it.
+              </p>
+            )
+          }
+        </section>
+
+        {
+          linked.length > 0 && (
+            <section class="box">
+              <p class="box__head">Came out of</p>
+              <ul class="box__list box__list--links">
+                {linked.map((r) => (
+                  <li>
+                    <a href={href(`/research/${r.id}`)} class="link">
+                      {r.data.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        }
+      </aside>
+    </div>
+
+    {
+      d.attack.length > 0 && (
+        <div class="rattack">
+          <Attack items={d.attack} label="ATT&CK mapping" />
+        </div>
+      )
+    }
+  </div>
+</Base>
+
+<style>
+  .rh {
+    padding-top: clamp(2.5rem, 1rem + 4vw, 4.5rem);
+    padding-bottom: var(--s-6);
+    border-bottom: 1px solid var(--line);
+    background: radial-gradient(60rem 22rem at 8% -30%, rgba(224, 164, 88, 0.06), transparent 70%);
+  }
+
+  .rh__back {
+    font-size: var(--t-2xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .rh__back:hover {
+    color: var(--accent);
+  }
+
+  .rh__badges {
+    margin-top: var(--s-5);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    align-items: center;
+  }
+
+  .rh__sev {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--sc);
+  }
+
+  .rh__sev[data-s='critical'] {
+    --sc: var(--sev-critical);
+  }
+  .rh__sev[data-s='high'] {
+    --sc: var(--sev-high);
+  }
+  .rh__sev[data-s='medium'] {
+    --sc: var(--sev-medium);
+  }
+  .rh__sev[data-s='low'] {
+    --sc: var(--sev-low);
+  }
+  .rh__sev[data-s='informational'] {
+    --sc: var(--sev-info);
+  }
+
+  .rh__sev::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--sc);
+    margin-right: 0.6ch;
+    vertical-align: middle;
+  }
+
+  .rh__title {
+    margin-top: var(--s-4);
+    font-size: var(--t-h1);
+    font-weight: 500;
+    max-width: 24ch;
+    text-wrap: balance;
+  }
+
+  .rh__sum {
+    margin-top: var(--s-4);
+    max-width: 60ch;
+  }
+
+  .rh__date {
+    margin-top: var(--s-5);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.1em;
+    color: var(--ink-4);
+  }
+
+  .rbody {
+    padding-block: var(--s-7);
+  }
+
+  .rgrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 17rem;
+    gap: var(--s-7);
+    align-items: start;
+  }
+
+  .rmain {
+    min-width: 0;
+  }
+
+  .rside {
+    display: grid;
+    gap: var(--s-4);
+    position: sticky;
+    top: 6rem;
+  }
+
+  .box {
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    background: var(--bg-raised);
+    padding: var(--s-4);
+  }
+
+  .box__head {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: var(--s-3);
+  }
+
+  .box__note {
+    font-size: var(--t-xs);
+    line-height: 1.6;
+    color: var(--ink-3);
+  }
+
+  .box__list {
+    margin: 0;
+    padding-left: 1.1em;
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  .box__list li {
+    font-size: var(--t-xs);
+    line-height: 1.55;
+    color: var(--ink-2);
+  }
+
+  .box__list li::marker {
+    color: var(--accent-dim);
+  }
+
+  .rattack {
+    margin-top: var(--s-7);
+    padding-top: var(--s-5);
+    border-top: 1px solid var(--line);
+  }
+
+  @media (max-width: 68rem) {
+    .rgrid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .rside {
+      position: static;
+      grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    }
+  }
+</style>

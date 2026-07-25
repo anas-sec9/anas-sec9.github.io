@@ -1,0 +1,212 @@
+---
+title: Catching MuddyWater Live
+subtitle: Detonating a real APT backdoor in my home lab — and catching it on SIEM, IDS, and EDR
+date: 2026-07-08
+summary: >-
+  I took the live BugSleep sample into an instrumented lab, sinkholed its C2, and detonated it.
+  My injection rule fired 18 times, Suricata caught the beacon, two rules stayed silent — and
+  that silence turned out to be the most useful result of the day.
+malware: BugSleep
+actor: muddywater
+series: BugSleep
+part: 2
+original:
+  label: Medium
+  url: https://medium.com/@anasabdelalieem9/catching-muddywater-live-be8af1fd9696
+tags: [muddywater, detection-engineering, splunk, suricata, edr, validation, sysmon]
+attack:
+  - { id: 'T1055', name: 'Process Injection' }
+  - { id: 'T1055.003', name: 'Thread Execution Hijacking' }
+  - { id: 'T1036.005', name: 'Masquerading: Match Legitimate Name or Location' }
+  - { id: 'T1543', name: 'Create or Modify System Process' }
+  - { id: 'T1571', name: 'Non-Standard Port' }
+  - { id: 'T1095', name: 'Non-Application Layer Protocol' }
+  - { id: 'T1074.001', name: 'Local Data Staging' }
+---
+
+import KeyFacts from '../../components/KeyFacts.astro';
+import Callout from '../../components/Callout.astro';
+import Shot from '../../components/Shot.astro';
+
+In [the last post](/research/bugsleep-unmasked) I reverse-engineered **BugSleep**, MuddyWater's
+backdoor — cracked its cipher, mapped its behaviour, and wrote detections from what I found. Writing
+a rule is easy. Proving it fires on the real malware is the part most people skip. So this post is
+the other half: I took the live sample into my detection lab, detonated it, and watched to see
+whether my rules actually lit up across SIEM, IDS, and EDR.
+
+Two things I care about in this one: doing it *safely* (it's live nation-state malware talking to a
+real C2), and being *honest* about what worked and what didn't.
+
+## The lab
+
+A small Hyper-V environment on a domain, `lab.local`:
+
+- **DC** — domain controller / DNS
+- **Victim** — Windows 10, the detonation box
+- **Sensor** — Ubuntu running Suricata, fed by a port mirror of the lab network
+- **Splunk** — the SIEM, with Sysmon on the victim forwarding via a Universal Forwarder
+- **Trend Vision One** — a real commercial EDR, deployed on the victim
+
+## Safety first — running live APT malware without setting my hair on fire
+
+BugSleep beacons to a hardcoded C2 (`91.235.234.202`). The whole game is: that beacon must **never**
+reach the real internet, but my sensor still needs to **see** it so the network rule fires. Here's
+how I squared that:
+
+1. **Sinkhole route** on the victim — `91.235.234.202/32` pointed at the sensor's IP. That forces
+   the beacon onto the mirrored lab network (where Suricata watches) and away from the real internet.
+2. **Sensor IP forwarding off** — so the sensor drops the C2 packet instead of relaying it out.
+3. **Internet NIC disabled** during the run — full isolation. (The EDR queues its data and uploads
+   it when I reconnect later.)
+4. I **verified containment before touching the malware**: from the victim, `8.8.8.8` was
+   unreachable, the DC and Splunk were reachable, and a test connection to the C2 tripped Suricata
+   while never leaving the lab.
+
+<Shot caption="Test-NetConnection results from the victim, alongside the Suricata fast.log alert raised by the containment test." wide />
+
+Only once that was green did I bring the sample anywhere near the box. I also disabled Defender's
+real-time protection (lab-only, reverted after) so the sample would actually execute — otherwise it
+gets quarantined on write and there's nothing to detect.
+
+## Arming both sides
+
+**Splunk** — I turned my analysis into real-time alerts: the msedge remote-thread injection (Sysmon
+Event ID 8), the `PackageManager` persistence, the C2 IP, and the `a.txt` staging file.
+
+**Suricata** — dropped my two BugSleep rules on the sensor and reloaded. Config test came back
+clean, 51,000+ rules loaded, zero failed.
+
+## Detonation
+
+I opened Edge (so there's a live `msedge.exe` to inject into), double-clicked the sample, and kept
+my hands off for two minutes.
+
+Here's what fired.
+
+**The injection — Splunk lit up 18 times.** Every hit was my *"remote thread into msedge"* rule
+(EID 8). It fired repeatedly because BugSleep injects into several Edge child processes — an
+unambiguous signal.
+
+<Shot caption="Splunk Triggered Alerts — the msedge remote-thread rule firing 18 times across Edge child processes." wide />
+
+**The C2 beacon — Suricata caught it.** Straight from the sensor:
+
+```
+[1:9100001:1] CTI BugSleep MuddyWater C2 - traffic to 91.235.234.202 ...
+192.168.100.10:51859 -> 91.235.234.202:443
+```
+
+And the best single frame of the whole run showed **the injected Edge going straight to the
+hardcoded IP with no DNS**, right next to a *different* Edge process doing a normal DNS lookup for a
+Microsoft domain. Same process name, two completely different behaviours.
+
+> That contrast *is* the detection.
+
+<Shot caption="The sensor log — the no-DNS beacon to the hardcoded C2 sitting beside normal Edge DNS traffic." wide />
+
+## The gaps I found (and this is the good part)
+
+Two of my rules stayed quiet: persistence and `a.txt`. My first instinct was "they didn't run."
+Wrong — both files were on disk:
+
+```powershell
+Test-Path "C:\ProgramData\PackageManager\PackageManager.exe"   # True
+Test-Path "C:\Users\Public\a.txt"                              # True
+```
+
+<Callout type="correction" title="Not a detection failure — a telemetry gap">
+The behaviour happened; Splunk never saw it. Two causes, both mine:
+
+1. My Sysmon config (SwiftOnSecurity) wasn't logging file creation in `ProgramData` or `Public`. I
+   added those paths, reloaded, and re-validated the `a.txt` alert.
+2. `PackageManager.exe` was **dropped, not executed** this run — it runs later via persistence. My
+   rule keyed on execution (EID 1), which never happened. The durable signal is the **drop (EID
+   11)**, and when I looked, that event was right there all along.
+</Callout>
+
+Fixed both, and now all four behaviours are covered. Finding and closing that gap is the job — a
+green dashboard that isn't logging the right thing is worse than no dashboard.
+
+<Shot caption="Splunk — the Sysmon EID 11 events showing the PackageManager drop that the original execution-based rule missed." wide />
+
+## The EDR — the honest part
+
+This is where I want to be precise, because it'd be easy to overclaim.
+
+I ran Trend in **Sensor Only** mode — telemetry and behavioural detection, but **no signature/AV
+engine** — on purpose, so the sample would execute. In that mode, the sensor **collected** the
+injection and even tagged it `MITRE.T1055` in its raw telemetry, but it **didn't raise an alert** on
+it.
+
+<Shot caption="Trend Vision One Data Explorer — the injection present in raw telemetry, tagged MITRE.T1055, with no alert raised." wide />
+
+<Callout type="caveat" title="What this does and doesn't show">
+This is **not** "the EDR can't catch BugSleep." Trend's product clearly can — I prove it below. What
+this shows is narrower and more useful: **behavioural-only detection of a stealthy injection into a
+signed browser isn't guaranteed.** My custom Sysmon + Splunk rule caught what the behavioural layer
+didn't escalate. That's the whole argument for layered detection and in-house detection engineering
+— you don't assume the default catches everything.
+</Callout>
+
+## Prevention — feeding the EDR my own intel
+
+Then the fun bit. I took the SHA-256 from *my own* analysis, added it to Trend's Suspicious Object
+list as **Block**, and re-ran the sample. Windows threw "cannot access the specified file," Trend
+popped **"Threat detected,"** and the log said `act: block, success`.
+
+<Shot caption="The victim — execution blocked, with Trend's threat notification, using an indicator produced by my own reverse engineering." wide />
+
+The malware got stopped by an indicator I produced by reverse-engineering it. That's the loop
+closing on itself.
+
+## And Trend's own verdict
+
+Last, I submitted the sample to Trend's sandbox to see what *their* intelligence says with no help
+from me. Verdict: **`Backdoor.Win64.MUDDYROT`, High** — and the actor field read **Earth Vetala**,
+which is Trend's name for MuddyWater. So their engine independently confirmed both the malware and
+the actor I'd attributed it to.
+
+The sandbox trace also mirrored my manual reversing beat for beat — `CreateMutexW(PackageManager)`,
+the self-copy to `ProgramData\PackageManager`, `WriteProcessMemory` + `CreateRemoteThread` into
+msedge.
+
+<Callout type="finding">
+The one that got me: its `WriteProcessMemory` moved **145,732 bytes (0x23944)** into Edge — the exact
+size of the code region my Ghidra analysis showed being decrypted. Two completely different methods,
+same hex number.
+</Callout>
+
+<Shot caption="Trend's sandbox — the MUDDYROT verdict, the Earth Vetala actor attribution, and the process graph." wide />
+
+<KeyFacts
+  title="Detonation results"
+  rows={[
+    { k: 'Splunk — injection', v: 'Fired 18×  (Sysmon EID 8, remote thread into msedge)', mono: false },
+    { k: 'Suricata — C2', v: 'Fired  (SID 9100001, beacon to 91.235.234.202:443)', mono: false },
+    { k: 'Splunk — persistence', v: 'Silent → fixed  (rule keyed on execution; the signal is the EID 11 drop)', mono: false },
+    { k: 'Splunk — a.txt staging', v: 'Silent → fixed  (Sysmon was not logging file events in Public)', mono: false },
+    { k: 'EDR — behavioural', v: 'Collected and tagged T1055, did not alert  (Sensor Only mode)', mono: false },
+    { k: 'EDR — prevention', v: 'Blocked on my own SHA-256  (act: block, success)', mono: false },
+    { k: 'Vendor sandbox', v: 'Backdoor.Win64.MUDDYROT, High — actor: Earth Vetala', mono: false },
+  ]}
+/>
+
+## What I actually walked away with
+
+- BugSleep was caught on **four independent surfaces** — my custom SIEM rule, the host artifacts,
+  the network IDS, and the sandbox.
+- I found a **real telemetry gap** in my own logging and fixed it.
+- I documented, honestly, that the EDR's **behavioural layer** didn't auto-alert on the injection in
+  the config I ran — and closed that gap three ways.
+- I **prevented** the malware using an IOC I generated myself.
+
+None of that came from a vendor report. It came from taking the thing apart, writing detections from
+first principles, and then proving them on the real sample.
+
+This run is also why the BugSleep rules in the [detection library](/detections) carry a
+**lab-validated** label while the Phoenix ones mostly don't — the difference is exactly this post,
+and I'd rather the labels tell you that than quietly imply the same confidence everywhere.
+
+Full validation report, the Splunk detection pack, Suricata rules, and everything else are on
+GitHub:
+[`threat-intel-reports/reports/muddywater_bugsleep/validation`](https://github.com/anas-sec9/threat-intel-reports/tree/main/reports/muddywater_bugsleep).

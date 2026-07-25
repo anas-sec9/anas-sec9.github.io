@@ -1,0 +1,233 @@
+---
+title: Hunting Phoenix
+subtitle: Turning a reverse-engineered backdoor into detections that survive a recompile — and proving them on samples I didn't make
+date: 2026-07-10
+summary: >-
+  Building the Phoenix detection pack: how I stopped a YARA rule from matching every Visual Studio
+  binary on earth, validated it against three independently-sourced samples across two campaigns,
+  and where the live-fire testing still stops.
+malware: Phoenix
+actor: muddywater
+series: Phoenix
+part: 2
+tags: [muddywater, detection-engineering, yara, sigma, suricata, validation]
+attack:
+  - { id: 'T1566.001', name: 'Spearphishing Attachment' }
+  - { id: 'T1204.002', name: 'User Execution: Malicious File' }
+  - { id: 'T1059.003', name: 'Windows Command Shell' }
+  - { id: 'T1036.008', name: 'Masquerade File Type' }
+  - { id: 'T1071.001', name: 'Application Layer Protocol: Web Protocols' }
+  - { id: 'T1132.001', name: 'Data Encoding: Standard Encoding' }
+  - { id: 'T1573', name: 'Encrypted Channel' }
+---
+
+import Callout from '../../components/Callout.astro';
+import Shot from '../../components/Shot.astro';
+import KeyFacts from '../../components/KeyFacts.astro';
+
+In [the last post](/research/phoenix-unmasked) I took MuddyWater's Phoenix backdoor apart: carved
+the loader out of a phishing document, found the XOR-and-stuffing scheme hiding under everyone's
+"AES" label, and pulled the C2 config out of live memory. That's the fun half. This is the half that
+actually protects anyone — turning all of that into detections, and then doing the thing most
+write-ups skip: *proving* the detections on samples I didn't cook myself.
+
+I'll be straight about scope up front, because a friend of mine reviewed my last YARA rule and
+(rightly) tore into it, and I've been trying to earn back the standard since. This post is detection
+*engineering and validation* — building the rules and testing them against real,
+independently-sourced samples. What it is **not**, yet, is a full live-fire on a SIEM/IDS/EDR stack
+the way I did for BugSleep. That detonation is still on the bench, and I'll say exactly where at the
+end rather than dress it up.
+
+## The problem Phoenix hands the defender
+
+Reversing Phoenix turned up something that shapes every detection decision: **MuddyWater ships it
+two different ways.**
+
+```
+Israel / netivtech    maldoc -> XOR-packed loader -> decrypt in memory -> core runs
+Hungary               maldoc -> core embedded directly, dropped as Updater_VB.exe
+```
+
+Same backdoor, two delivery chains. A rule tuned to the packed loader is blind to the second
+campaign. A rule tuned to the maldoc's `hostmanager.log` drop misses the one that drops
+`Updater_VB.exe`. So I couldn't write "a Phoenix rule." I had to write a layered set and be clear
+about what each layer sees.
+
+## The detection pack
+
+- **YARA — loader.** Anchors on the 32-byte XOR key string *and* the high-entropy encrypted `.rdata`
+  blob, required together. The key alone could theoretically appear anywhere; a big encrypted
+  section alone matches half of all packers. The pair, in one PE, is Phoenix's loader.
+- **YARA — core.** The durable one. Catches the unpacked backdoor regardless of delivery. How I
+  built it safely is the whole next section.
+- **YARA — memory.** The decrypted config (`netivtech.org` + `/register` + the WinHTTP user-agent,
+  required together) for process dumps and memory forensics.
+- **Suricata.** DNS and TLS SNI for `netivtech.org`. Phoenix beacons over HTTPS, so the URI and
+  user-agent are encrypted on the wire — those belong at a proxy or TLS-inspection point, not in a
+  raw-packet rule. I split them across the right layers instead of writing a network rule that can
+  never fire.
+- **Sigma.** The delivery chains — Office spawning a shell that touches
+  `C:\Users\Public\hostmanager.*` or drops `Updater_VB.exe` — and the proxy-side beacon.
+
+All ATT&CK-mapped. But mapping is easy. Precision is the hard part, and it's where my friend's
+feedback lives.
+
+## Building a YARA rule that doesn't hit the whole world
+
+When I first tried to write a rule for the Phoenix *core*, I did the obvious thing: diff two cores,
+find the byte sequences they share, anchor on the biggest ones. Then I looked at what those big
+shared runs actually were.
+
+<Shot caption="The raw common-code diff — the largest shared runs between the two cores." />
+
+<Callout type="correction" title="The first attempt was wrong">
+They were the C runtime. The largest shared blocks — thousands of bytes — were MSVC boilerplate and
+CRT data tables. Anchor a rule on those and it doesn't catch Phoenix; it catches *every program
+compiled with Visual Studio*. That's the exact mistake my friend called out on my BugSleep rule:
+don't OR together weak signals, and don't anchor on something that isn't specific to the thing
+you're hunting.
+</Callout>
+
+So "common to both cores" wasn't enough. I needed "common to both cores **and not** generic
+runtime." And I had the perfect control sitting right there: the **loader** is also a Visual Studio
+binary, so it shares the CRT with the cores but not the backdoor's own logic. So I filtered:
+
+```
+keep code that is:  in core A  AND  in core B  AND NOT in the loader/CRT
+```
+
+<Shot caption="The CRT-filtered diff — what's left is Phoenix's own code." />
+
+What survived that filter is Phoenix's actual backdoor code — the parts that persisted through a
+recompile between two campaigns but never appear in the runtime. I took three of those runs,
+wildcarded the call and table offsets so a rebuild still matches, and required **two of them
+together** (or one plus the sample-code user-agent string). No single weak signal fires alone.
+That's the standard my friend held me to, applied properly.
+
+Here's what came out:
+
+```yara
+rule Phoenix_MuddyWater_core
+{
+    meta:
+        description = "MuddyWater Phoenix unpacked core backdoor - cross-sample code anchors"
+        author      = "Anas"
+        reference   = "e9d376e8 (our decrypted core) + b99edfb9 (MalwareBazaar Hungary build)"
+        actor       = "MuddyWater / Earth Vetala"
+        tlp         = "CLEAR"
+    strings:
+        // MS-sample-derived user-agent string present in the core (weak alone)
+        $ua = "WinHTTP Example/1.0" ascii
+        // arith + distinctive immediates 0x1D/0x19 (and eax,1Dh / add eax,19h)
+        $c1 = { f6 d8 4c 8b c9 48 89 54 24 60 8b 51 04 1b c0 83 e0 1d 48 89 4c 24 58 83 c0 19 45 33 db 45 85 d2 }
+        // index*5 / dec / table lookup; disp32 + rel32 wildcarded so a rebuild still matches
+        $c2 = { 8b 4c 24 40 8d 04 80 03 c0 2b c8 74 41 8d 41 ff 8b 84 83 [4] 85 c0 0f 85 [4] 45 33 c9 }
+        // struct-field length check [rbx+18]/[rbx+28]; rel8 wildcarded
+        $c3 = { 48 8b 4b 18 48 3b d1 76 0c 40 38 6b 28 74 ?? 40 88 6b 28 }
+    condition:
+        uint16(0) == 0x5A4D
+        and filesize < 2MB
+        // two independent Phoenix code regions, OR one code region + the UA string
+        and (2 of ($c*) or (1 of ($c*) and $ua))
+}
+```
+
+## Validating it — the part people skip
+
+A rule that compiles is not a rule that works. I ran it against four things: both cores (must
+match), the loader (must stay quiet — it has no core code), and `notepad.exe` (my false-positive
+canary).
+
+<Shot caption="The four YARA runs — two hits on the cores, silent on the loader and on notepad.exe." />
+
+```
+phoenix_core.bin   ->  Phoenix_MuddyWater_core   (match)
+b99edfb9…          ->  Phoenix_MuddyWater_core   (match)
+loader             ->  (no match)
+notepad.exe        ->  (no match)
+```
+
+Fires on both cores, clean on the loader and on a benign binary. That's a rule I'd actually put in
+front of someone.
+
+## Proving it on samples I didn't make
+
+Two internal cores is still my own work. So I went hunting on MalwareBazaar, pivoting on the
+developers' own typo — the `Phoniex` tag — and pulled two samples from a completely different
+(Hungarian) campaign.
+
+The EXE was a Phoenix core, near-identical to mine — my rule matched it on sight. Then the document:
+I carved its embedded payload and its hash matched the EXE exactly, which told me the Hungarian
+maldoc **embeds the core directly** instead of using the packed loader. My core rule caught that
+carved payload too.
+
+<Shot caption="The core rule firing on the Hungary-campaign sample — a build I had never seen." />
+
+<Callout type="finding">
+The same rule now catches the backdoor across **three independently-sourced instances** and **two
+delivery styles** — my decrypted core, MalwareBazaar's EXE, and the payload carved from a maldoc I'd
+never seen. That's the difference between "I wrote a rule for my sample" and "I wrote a rule for
+Phoenix."
+</Callout>
+
+## The extractor as a hunting tool
+
+The generic extractor from the last post earns its keep here. Because it recovers the XOR key
+automatically (using the PE's own DOS header as a crib), you can point it at *any* Phoenix loader —
+no reversing, no detonation — and get a clean core out the other side. That core goes straight into
+the YARA rule. So the hunting loop is: find a suspected loader → extract the core statically →
+confirm with the rule. All of it without ever running the malware.
+
+<Shot caption="The generic extractor cracking a second, previously unseen loader." />
+
+## What I did live — and what I didn't
+
+Here's the honest boundary.
+
+**What I ran live:** the dynamic analysis, in an isolated FLARE-VM with FakeNet-NG as the fake
+internet. Phoenix beaconed to `netivtech.org` — no real internet, sinkholed, snapshot-reverted
+after. That's how I confirmed the C2 on the wire and then dumped the process to recover the
+runtime-built config. It's also how I validated that the Suricata DNS/SNI rules have something real
+to bite on.
+
+<Shot caption="FakeNet-NG — the netivtech.org beacon from the detonated core." />
+
+<Callout type="bench" title="What I have not run yet">
+The full detonation on a live SIEM/IDS/EDR stack — Sysmon into Splunk, Suricata on a mirrored
+sensor, a real EDR on the victim — the way I did for BugSleep. The Sigma and Suricata rules here are
+written from confirmed behaviour and compile clean, but I haven't watched them fire end-to-end on
+that stack for Phoenix. I'm not going to show you a dashboard I didn't light up. That live-fire is
+the next post, on the same Hyper-V lab, and I'd rather tell you it's pending than fake it.
+</Callout>
+
+<KeyFacts
+  title="Validation status"
+  rows={[
+    { k: 'YARA — core', v: 'Sample validated · 3 samples, 2 campaigns, clean on loader + notepad', mono: false },
+    { k: 'YARA — loader', v: 'Sample validated · matches the packed stage-2, clean on the cores', mono: false },
+    { k: 'YARA — memory', v: 'Sample validated · fires on the process dump only, never on disk', mono: false },
+    { k: 'Suricata DNS/SNI', v: 'Sample validated · confirmed against FakeNet traffic', mono: false },
+    { k: 'Sigma — delivery', v: 'Untested on a live stack · written from confirmed behaviour', mono: false },
+    { k: 'Sigma — beacon', v: 'Untested on a live stack · proxy layer, not yet instrumented', mono: false },
+  ]}
+/>
+
+## What this half was actually about
+
+- Phoenix is delivered **two ways**, so detection has to be **layered** — and the core rule is the
+  piece that doesn't care how it arrived.
+- I built that core rule the disciplined way: diff for shared code, then **subtract the C runtime
+  and the loader** so no compiler boilerplate leaks in, then require **multiple anchors together**.
+- I validated it against **three independently-sourced samples** from **two campaigns**, plus a
+  benign false-positive check.
+- The static extractor turns "suspected loader" into "confirmed core" without running anything.
+- And I've been clear about the one thing still on the bench: the live SIEM/IDS/EDR detonation.
+
+None of the detection came from a vendor feed. It came from taking the thing apart, then holding the
+rules to a standard where they still work on the next sample — which is the only standard that
+matters.
+
+Rules, both extractors, the IOCs, and the diff/validation scripts are on GitHub:
+[`threat-intel-reports/reports/muddywater_phoenix`](https://github.com/anas-sec9/threat-intel-reports).
+Each rule also has its own page in the [detection library](/detections) with the telemetry it needs
+and the false positives I've hit.

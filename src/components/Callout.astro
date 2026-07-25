@@ -1,0 +1,103 @@
+---
+/**
+ * Editorial callouts. The `finding` / `correction` / `bench` set exists
+ * because the honest-scope thing is the whole editorial position of this
+ * site — it should be a visual element, not just a sentence in a paragraph.
+ */
+interface Props {
+  type?: 'finding' | 'correction' | 'bench' | 'caveat' | 'note';
+  title?: string;
+}
+
+const { type = 'note', title } = Astro.props;
+
+const meta = {
+  finding: { label: 'Finding', glyph: '◆' },
+  correction: { label: 'Correction', glyph: '↺' },
+  bench: { label: 'Still on the bench', glyph: '◷' },
+  caveat: { label: 'Scope', glyph: '⚠' },
+  note: { label: 'Note', glyph: '·' },
+}[type];
+---
+
+<aside class:list={['call', `call--${type}`]}>
+  <p class="call__head">
+    <span class="call__glyph" aria-hidden="true">{meta.glyph}</span>
+    <span class="call__label">{title ?? meta.label}</span>
+  </p>
+  <div class="call__body"><slot /></div>
+</aside>
+
+<style>
+  .call {
+    --c: var(--ink-3);
+    --c-wash: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--c);
+    border-radius: var(--r-2);
+    background: var(--c-wash);
+    padding: var(--s-4) var(--s-5);
+    margin-top: 1.8em;
+    margin-bottom: 1.8em;
+  }
+
+  .call--finding {
+    --c: var(--accent);
+    --c-wash: var(--accent-wash);
+  }
+
+  .call--correction {
+    --c: var(--sev-critical);
+    --c-wash: var(--crit-wash);
+  }
+
+  .call--bench {
+    --c: var(--sev-low);
+    --c-wash: var(--info-wash);
+  }
+
+  .call--caveat {
+    --c: var(--sev-high);
+    --c-wash: var(--warn-wash);
+  }
+
+  .call__head {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--c);
+    margin-bottom: var(--s-3);
+  }
+
+  .call__glyph {
+    font-size: 0.9em;
+  }
+
+  .call__body {
+    font-size: 0.98rem;
+    line-height: 1.68;
+    color: var(--ink-2);
+  }
+
+  .call__body :global(> * + *) {
+    margin-top: 0.8em;
+  }
+
+  .call__body :global(strong) {
+    color: var(--ink);
+  }
+
+  .call__body :global(code) {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    padding: 0.12em 0.35em;
+    background: var(--bg-sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    color: #d9c3a0;
+  }
+</style>

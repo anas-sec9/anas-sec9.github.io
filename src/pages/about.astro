@@ -1,0 +1,257 @@
+---
+import Base from '../layouts/Base.astro';
+import { site } from '../site.config';
+import '../styles/prose.css';
+
+const links = [
+  { label: 'GitHub', url: site.author.github },
+  { label: 'LinkedIn', url: site.author.linkedin },
+  { label: 'Email', url: `mailto:${site.author.email}` },
+].filter((l) => l.url);
+
+const lab = [
+  ['SIEM', 'Splunk, with Sysmon and Windows event forwarding from every host'],
+  ['Domain', 'Windows DC running an AD forest, plus a domain-joined victim workstation'],
+  ['Network', 'Suricata and Zeek on a mirrored span, logs shipped to the SIEM'],
+  ['Offense', 'Kali for delivery and the purple-team test cases'],
+  ['Malware', 'A separate, fully isolated FLARE-VM with FakeNet-NG standing in for the internet'],
+];
+---
+
+<Base title="About" description={`${site.author.name} — ${site.author.role}`}>
+  <div class="wrap about">
+    <div class="about__grid">
+      <div class="about__main">
+        <p class="kicker kicker--plain"><span class="kicker__n">00</span><span>About</span></p>
+
+        <h1 class="display about__h">{site.author.name}</h1>
+        <p class="about__role">{site.author.role}</p>
+
+        <div class="prose about__prose">
+          <p>
+            I'm a detection engineer. Most of my day job has been in a SOC — writing and tuning rules,
+            chasing alerts to ground, and building the decoders and correlation logic that make the
+            noisy parts quieter. This site is where the work that isn't tied to an employer lives.
+          </p>
+
+          <p>
+            The thing I care about, and the reason this site is called what it is: <strong>I don't
+            publish a claim I can't reproduce.</strong> Threat intel has a bad habit of laundering
+            assertions — one vendor writes "AES-encrypted payload", six blogs repeat it, and nobody
+            opens the binary. I've had that exact experience: I went into a MuddyWater sample expecting
+            to crack AES because every report said so, and there wasn't any. That's the standard I try
+            to hold. If I proved it, I'll show you how. If I inherited it, I'll say so. If it's still
+            sitting untested on the bench, that's on the page too.
+          </p>
+
+          <h2>What I work with</h2>
+          <p>
+            Day to day: QRadar, Elastic, Wazuh and Splunk, with a lot of custom rule and decoder
+            authoring. Everything gets mapped to MITRE ATT&CK, because a detection you can't place on
+            the matrix is a detection you can't reason about coverage for. For analysis: Ghidra,
+            FLARE-VM, DIE, PEStudio, FLOSS, CAPA, and however much Python a given sample demands.
+          </p>
+
+          <h2>The lab</h2>
+          <p>
+            Everything here is built and tested on infrastructure I run myself, so I can detonate
+            something and watch what my own rules do about it:
+          </p>
+        </div>
+
+        <dl class="lab">
+          {
+            lab.map(([k, v]) => (
+              <div class="lab__row">
+                <dt>{k}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))
+          }
+        </dl>
+
+        <div class="prose about__prose">
+          <h2>What I'm studying</h2>
+          <p>
+            I'm working through the SANS threat-management track — network monitoring and traffic
+            analysis, cyber threat intelligence, advanced IR and threat hunting, enterprise-scale DFIR,
+            purple teaming, and cloud detection. Notes from that end up in the <a href="/log">build
+            log</a> rather than dressed up as original research, because that's what they are.
+          </p>
+
+          <h2>Get in touch</h2>
+          <p>
+            If you want to argue with a finding, tell me a rule is too broad, or talk about a role —
+            all three are welcome, in that order of enthusiasm.
+          </p>
+        </div>
+
+        <div class="about__links">
+          {
+            links.map((l) => (
+              <a href={l.url} class="about__link" rel="noopener">
+                {l.label}
+              </a>
+            ))
+          }
+        </div>
+      </div>
+
+      <aside class="about__side">
+        <div class="sbox">
+          <p class="sbox__head">Handling</p>
+          <p class="sbox__note">{site.disclaimer}</p>
+        </div>
+
+        <div class="sbox">
+          <p class="sbox__head">Source</p>
+          <p class="sbox__note">
+            Rules, extractors and IOC sets are published in full. Nothing here is a screenshot of a
+            tool you can't run yourself.
+          </p>
+          <div class="sbox__links">
+            <a href={site.repos.reports} class="link" rel="noopener">Reports repo</a>
+            <a href={site.repos.detections} class="link" rel="noopener">Detection repo</a>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</Base>
+
+<style>
+  .about {
+    padding-block: clamp(3rem, 1rem + 5vw, 6rem);
+  }
+
+  .about__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 17rem;
+    gap: var(--s-8);
+    align-items: start;
+  }
+
+  .about__h {
+    margin-top: var(--s-4);
+    font-size: var(--t-display);
+    font-weight: 400;
+  }
+
+  .about__role {
+    margin-top: var(--s-3);
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .about__prose {
+    margin-top: var(--s-6);
+  }
+
+  .about__prose :global(> p:first-of-type::first-letter) {
+    float: none;
+    font-size: inherit;
+    color: inherit;
+    font-family: inherit;
+    padding: 0;
+  }
+
+  .lab {
+    margin-block: var(--s-6);
+    border-top: 1px solid var(--line);
+    max-width: var(--w-prose);
+  }
+
+  .lab__row {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: var(--s-4);
+    padding-block: var(--s-3);
+    border-bottom: 1px solid var(--line-faint);
+    align-items: baseline;
+  }
+
+  .lab dt {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .lab dd {
+    margin: 0;
+    font-size: var(--t-sm);
+    color: var(--ink-2);
+    line-height: 1.6;
+  }
+
+  .about__links {
+    margin-top: var(--s-6);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+  }
+
+  .about__link {
+    padding: 0.6rem 1.1rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-2);
+    font-size: var(--t-sm);
+    color: var(--ink-2);
+    transition: all var(--dur) var(--ease);
+  }
+
+  .about__link:hover {
+    border-color: var(--accent-line);
+    color: var(--accent);
+  }
+
+  .about__side {
+    display: grid;
+    gap: var(--s-4);
+    position: sticky;
+    top: 6rem;
+  }
+
+  .sbox {
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    background: var(--bg-raised);
+    padding: var(--s-4);
+  }
+
+  .sbox__head {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: var(--s-3);
+  }
+
+  .sbox__note {
+    font-size: var(--t-xs);
+    line-height: 1.65;
+    color: var(--ink-3);
+  }
+
+  .sbox__links {
+    margin-top: var(--s-3);
+    display: grid;
+    gap: var(--s-2);
+    font-size: var(--t-xs);
+  }
+
+  @media (max-width: 68rem) {
+    .about__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .about__side {
+      position: static;
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    }
+  }
+</style>

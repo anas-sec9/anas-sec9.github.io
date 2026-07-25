@@ -1,0 +1,91 @@
+---
+/**
+ * The "at a glance" block that opens a research post. Dense, mono,
+ * scannable — for the reader who wants the verdict before the story.
+ */
+interface Props {
+  rows: { k: string; v: string; mono?: boolean }[];
+  title?: string;
+}
+
+const { rows, title = 'At a glance' } = Astro.props;
+---
+
+<section class="kf">
+  <p class="kf__title">{title}</p>
+  <dl class="kf__list">
+    {
+      rows.map((r) => (
+        <div class="kf__row">
+          <dt>{r.k}</dt>
+          <dd class:list={[{ mono: r.mono !== false }]}>{r.v}</dd>
+        </div>
+      ))
+    }
+  </dl>
+</section>
+
+<style>
+  .kf {
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--accent);
+    border-radius: var(--r-2);
+    background: var(--bg-raised);
+    padding: var(--s-5);
+    margin-block: 2em;
+  }
+
+  .kf__title {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: var(--s-4);
+  }
+
+  .kf__list {
+    display: grid;
+    gap: 0;
+  }
+
+  .kf__row {
+    display: grid;
+    grid-template-columns: minmax(7rem, 11rem) 1fr;
+    gap: var(--s-4);
+    padding-block: var(--s-3);
+    border-top: 1px solid var(--line-faint);
+    align-items: baseline;
+  }
+
+  .kf__row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  dt {
+    font-size: var(--t-xs);
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+  }
+
+  dd {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--ink);
+    word-break: break-word;
+    line-height: 1.55;
+  }
+
+  dd.mono {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+  }
+
+  @media (max-width: 34rem) {
+    .kf__row {
+      grid-template-columns: 1fr;
+      gap: var(--s-1);
+    }
+  }
+</style>

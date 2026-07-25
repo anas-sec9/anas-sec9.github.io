@@ -1,0 +1,240 @@
+---
+/**
+ * IOC table with an explicit confidence column and a copy-all button.
+ * The confidence column is mandatory by design — an indicator without a
+ * stated confidence is a rumour.
+ */
+interface IOC {
+  value: string;
+  type: string;
+  context: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+interface Props {
+  items: IOC[];
+  title?: string;
+}
+
+const { items, title = 'Indicators' } = Astro.props;
+
+const counts = {
+  high: items.filter((i) => i.confidence === 'high').length,
+  medium: items.filter((i) => i.confidence === 'medium').length,
+  low: items.filter((i) => i.confidence === 'low').length,
+};
+
+const plain = items.map((i) => i.value).join('\n');
+---
+
+<section class="ioc bleed">
+  <header class="ioc__head">
+    <div>
+      <p class="ioc__title">{title}</p>
+      <p class="ioc__count">
+        <span>{items.length} total</span>
+        <span class="ioc__dot" data-c="high"></span>{counts.high} high
+        <span class="ioc__dot" data-c="medium"></span>{counts.medium} medium
+        <span class="ioc__dot" data-c="low"></span>{counts.low} low
+      </p>
+    </div>
+    <button class="ioc__copy" data-payload={plain}>Copy all</button>
+  </header>
+
+  <div class="ioc__scroll">
+    <table class="ioc__table">
+      <thead>
+        <tr>
+          <th>Indicator</th>
+          <th>Type</th>
+          <th>Context</th>
+          <th>Conf.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          items.map((i) => (
+            <tr>
+              <td class="ioc__val">{i.value}</td>
+              <td class="ioc__type">{i.type}</td>
+              <td class="ioc__ctx">{i.context}</td>
+              <td>
+                <span class="ioc__conf" data-c={i.confidence}>{i.confidence}</span>
+              </td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<style>
+  .ioc {
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    background: var(--bg-raised);
+    margin-block: 2.4em;
+    overflow: hidden;
+  }
+
+  .ioc__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--s-4);
+    padding: var(--s-4) var(--s-5);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-raised-2);
+  }
+
+  .ioc__title {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .ioc__count {
+    margin-top: var(--s-2);
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    color: var(--ink-4);
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+  }
+
+  .ioc__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: var(--s-2);
+  }
+
+  .ioc__dot[data-c='high'],
+  .ioc__conf[data-c='high'] {
+    --dc: var(--ok);
+  }
+  .ioc__dot[data-c='medium'],
+  .ioc__conf[data-c='medium'] {
+    --dc: var(--sev-medium);
+  }
+  .ioc__dot[data-c='low'],
+  .ioc__conf[data-c='low'] {
+    --dc: var(--ink-4);
+  }
+
+  .ioc__dot {
+    background: var(--dc);
+  }
+
+  .ioc__copy {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.45em 0.9em;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-1);
+    color: var(--ink-2);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+
+  .ioc__copy:hover {
+    border-color: var(--accent-line);
+    color: var(--accent);
+  }
+
+  .ioc__scroll {
+    overflow-x: auto;
+  }
+
+  .ioc__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--t-xs);
+  }
+
+  .ioc__table th {
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    font-weight: 500;
+    padding: var(--s-3) var(--s-4);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+
+  .ioc__table td {
+    padding: var(--s-3) var(--s-4);
+    border-bottom: 1px solid var(--line-faint);
+    vertical-align: top;
+  }
+
+  .ioc__table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .ioc__table tbody tr:hover {
+    background: var(--bg-raised-2);
+  }
+
+  .ioc__val {
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    color: var(--ink);
+    word-break: break-all;
+    max-width: 30rem;
+  }
+
+  .ioc__type {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  .ioc__ctx {
+    color: var(--ink-3);
+    min-width: 16rem;
+    line-height: 1.5;
+  }
+
+  .ioc__conf {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dc);
+    border: 1px solid color-mix(in srgb, var(--dc) 40%, transparent);
+    padding: 0.2em 0.5em;
+    border-radius: var(--r-1);
+    white-space: nowrap;
+  }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('.ioc__copy').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const payload = btn.dataset.payload ?? '';
+      try {
+        await navigator.clipboard.writeText(payload);
+        const original = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(() => (btn.textContent = original), 1600);
+      } catch {
+        btn.textContent = 'Copy failed';
+      }
+    });
+  });
+</script>

@@ -1,0 +1,427 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import SectionHead from '../components/SectionHead.astro';
+import ResearchCard from '../components/ResearchCard.astro';
+import DetectionRow from '../components/DetectionRow.astro';
+import ActorCard from '../components/ActorCard.astro';
+import { site } from '../site.config';
+import { href, fmtStamp, idx } from '../lib/url';
+
+const live = <T extends { data: { draft?: boolean } }>(c: T[]) => c.filter((e) => !e.data.draft);
+const byDate = (a: { data: { date: Date } }, b: { data: { date: Date } }) => b.data.date.valueOf() - a.data.date.valueOf();
+
+const research = live(await getCollection('research')).sort(byDate);
+const detections = live(await getCollection('detections')).sort(byDate);
+const actors = live(await getCollection('actors'));
+const log = live(await getCollection('log')).sort(byDate);
+
+const featured = research.find((r) => r.data.featured) ?? research[0];
+const rest = research.filter((r) => r.id !== featured?.id).slice(0, 3);
+
+/** Families I've actually opened — from research posts and from actor tooling lists. */
+const families = new Set<string>([
+  ...research.map((r) => r.data.malware).filter((m): m is string => Boolean(m)),
+  ...actors.flatMap((a) => a.data.malware),
+]);
+
+const stats = [
+  { n: research.length, label: 'Analyses published' },
+  { n: detections.length, label: 'Detections shipped' },
+  { n: families.size, label: 'Families reversed' },
+  { n: actors.length, label: 'Actors tracked' },
+];
+---
+
+<Base>
+  {/* ═══════════ HERO ═══════════ */}
+  <section class="hero">
+    <div class="wrap wrap--wide">
+      <p class="hero__eyebrow mono">
+        {site.author.name} <span class="hero__slash">/</span> {site.author.role}
+      </p>
+
+      <h1 class="hero__h display">
+        I take malware apart<br class="hero__br" />
+        and write the<br class="hero__br" />
+        <em class="hero__em">detections myself.</em>
+      </h1>
+
+      <p class="hero__lede">
+        Every rule on this site came out of a sample I opened, not a vendor feed I copied. Where I
+        couldn't prove something, it says so.
+      </p>
+
+      <div class="hero__cta">
+        <a href={href('/research')} class="btn btn--primary">Read the research</a>
+        <a href={href('/detections')} class="btn">Browse detections</a>
+      </div>
+
+      <dl class="stats">
+        {
+          stats.map((s) => (
+            <div class="stats__item">
+              <dt class="stats__n display">{String(s.n).padStart(2, '0')}</dt>
+              <dd class="stats__l">{s.label}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </section>
+
+  {/* ═══════════ FEATURED ═══════════ */}
+  {
+    featured && (
+      <section class="sect">
+        <div class="wrap wrap--wide">
+          <SectionHead n="01" label="Latest analysis" />
+          <ResearchCard
+            variant="feature"
+            n="01"
+            id={featured.id}
+            title={featured.data.title}
+            subtitle={featured.data.subtitle}
+            summary={featured.data.summary}
+            date={featured.data.date}
+            malware={featured.data.malware}
+          />
+        </div>
+      </section>
+    )
+  }
+
+  {/* ═══════════ MORE RESEARCH ═══════════ */}
+  {
+    rest.length > 0 && (
+      <section class="sect">
+        <div class="wrap wrap--wide">
+          <SectionHead
+            n="02"
+            label="Research"
+            title="Reverse engineering write-ups"
+            blurb="Full teardowns — how the sample was unpacked, what the config actually said, and which claims I could and couldn't reproduce."
+            moreHref="/research"
+          />
+          <div class="cards">
+            {rest.map((r, i) => (
+              <ResearchCard
+                id={r.id}
+                n={idx(i + 2)}
+                title={r.data.title}
+                summary={r.data.summary}
+                date={r.data.date}
+                malware={r.data.malware}
+                tags={r.data.tags}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  {/* ═══════════ DETECTIONS ═══════════ */}
+  {
+    detections.length > 0 && (
+      <section class="sect">
+        <div class="wrap wrap--wide">
+          <SectionHead
+            n="03"
+            label="Detection library"
+            title="Rules you can actually deploy"
+            blurb="Each one carries its ATT&CK mapping, the telemetry it needs, the false positives I found, and an honest maturity label."
+            moreHref="/detections"
+          />
+          <div class="panel">
+            {detections.slice(0, 5).map((d) => (
+              <DetectionRow
+                id={d.id}
+                title={d.data.title}
+                summary={d.data.summary}
+                format={d.data.format}
+                surface={d.data.surface}
+                maturity={d.data.maturity}
+                severity={d.data.severity}
+                attack={d.data.attack}
+                tags={d.data.tags}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  {/* ═══════════ ACTORS ═══════════ */}
+  {
+    actors.length > 0 && (
+      <section class="sect">
+        <div class="wrap wrap--wide">
+          <SectionHead
+            n="04"
+            label="Adversaries"
+            title="Who I'm tracking"
+            blurb="Profiles built from my own analysis where I have it, and clearly marked as inherited where I don't."
+            moreHref="/actors"
+          />
+          <div class="cards cards--2">
+            {actors.slice(0, 2).map((a, i) => (
+              <ActorCard
+                id={a.id}
+                n={idx(i + 1)}
+                name={a.data.name}
+                aliases={a.data.aliases}
+                nexus={a.data.nexus}
+                summary={a.data.summary}
+                status={a.data.status}
+                attribution={a.data.attribution}
+                malware={a.data.malware}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  {/* ═══════════ LOG ═══════════ */}
+  {
+    log.length > 0 && (
+      <section class="sect sect--last">
+        <div class="wrap wrap--wide">
+          <SectionHead n="05" label="Build log" title="From the bench" moreHref="/log" moreLabel="All entries" />
+          <div class="loglist">
+            {log.slice(0, 4).map((l) => (
+              <a href={href(`/log/${l.id}`)} class="logrow">
+                <span class="logrow__date mono">{fmtStamp(l.data.date)}</span>
+                <span class="logrow__title">{l.data.title}</span>
+                {l.data.track && <span class="badge logrow__track">{l.data.track}</span>}
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+</Base>
+
+<style>
+  /* ═══ Hero ═══ */
+  .hero {
+    padding-top: clamp(3.5rem, 1rem + 8vw, 8rem);
+    padding-bottom: clamp(3rem, 1rem + 5vw, 5rem);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: -30% 0 auto -10%;
+    height: 60rem;
+    background: radial-gradient(50rem 30rem at 15% 30%, rgba(224, 164, 88, 0.09), transparent 65%);
+    pointer-events: none;
+  }
+
+  .hero > * {
+    position: relative;
+  }
+
+  .hero__eyebrow {
+    font-size: var(--t-2xs);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .hero__slash {
+    color: var(--accent);
+    margin-inline: 0.4em;
+  }
+
+  .hero__h {
+    margin-top: var(--s-5);
+    font-size: var(--t-hero);
+    font-weight: 400;
+    color: var(--ink);
+    letter-spacing: -0.03em;
+  }
+
+  .hero__em {
+    font-style: italic;
+    font-weight: 300;
+    color: var(--accent);
+  }
+
+  .hero__lede {
+    margin-top: var(--s-6);
+    max-width: 46ch;
+    font-size: var(--t-lead);
+    line-height: 1.6;
+    color: var(--ink-2);
+  }
+
+  .hero__cta {
+    margin-top: var(--s-6);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0.72rem 1.3rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-2);
+    font-size: var(--t-sm);
+    color: var(--ink-2);
+    transition: all var(--dur) var(--ease);
+  }
+
+  .btn:hover {
+    border-color: var(--ink-3);
+    color: var(--ink);
+  }
+
+  .btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #16120a;
+    font-weight: 500;
+  }
+
+  .btn--primary:hover {
+    background: var(--accent-bright);
+    border-color: var(--accent-bright);
+    color: #16120a;
+  }
+
+  /* ═══ Stats ═══ */
+  .stats {
+    margin-top: clamp(3rem, 1rem + 5vw, 5.5rem);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--line);
+  }
+
+  .stats__item {
+    padding: var(--s-5) var(--s-4) 0 0;
+    border-right: 1px solid var(--line-faint);
+  }
+
+  .stats__item:last-child {
+    border-right: 0;
+  }
+
+  .stats__n {
+    font-size: clamp(2rem, 1.2rem + 2.4vw, 3.1rem);
+    font-weight: 300;
+    color: var(--accent);
+    line-height: 1;
+    font-variant-numeric: lining-nums;
+  }
+
+  .stats__l {
+    margin: var(--s-3) 0 0;
+    font-size: var(--t-xs);
+    color: var(--ink-3);
+    line-height: 1.4;
+  }
+
+  /* ═══ Sections ═══ */
+  .sect {
+    padding-block: clamp(3rem, 1rem + 5vw, 5.5rem);
+  }
+
+  .sect--last {
+    padding-bottom: 0;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--s-4);
+  }
+
+  .cards--2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    background: var(--bg-raised);
+    overflow: hidden;
+  }
+
+  .panel > :global(a:last-child) {
+    border-bottom: 0;
+  }
+
+  /* ═══ Log ═══ */
+  .loglist {
+    border-top: 1px solid var(--line);
+  }
+
+  .logrow {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr) auto;
+    gap: var(--s-4);
+    align-items: center;
+    padding: var(--s-4) var(--s-3);
+    border-bottom: 1px solid var(--line-faint);
+    transition: background var(--dur) var(--ease), padding-left var(--dur) var(--ease);
+  }
+
+  .logrow:hover {
+    background: var(--bg-raised);
+    padding-left: var(--s-5);
+  }
+
+  .logrow__date {
+    font-size: var(--t-2xs);
+    color: var(--ink-4);
+    letter-spacing: 0.06em;
+  }
+
+  .logrow__title {
+    font-size: var(--t-sm);
+    color: var(--ink-2);
+  }
+
+  .logrow:hover .logrow__title {
+    color: var(--ink);
+  }
+
+  @media (max-width: 62rem) {
+    .cards {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .stats {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .stats__item:nth-child(2) {
+      border-right: 0;
+    }
+  }
+
+  @media (max-width: 42rem) {
+    .cards,
+    .cards--2 {
+      grid-template-columns: 1fr;
+    }
+    .logrow {
+      grid-template-columns: 5.5rem minmax(0, 1fr);
+    }
+    .hero__h {
+      letter-spacing: -0.02em;
+    }
+    /* let the headline wrap naturally instead of at the desktop break points */
+    .hero__br {
+      display: none;
+    }
+  }
+</style>

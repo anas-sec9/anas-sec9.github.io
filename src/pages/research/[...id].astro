@@ -1,0 +1,40 @@
+---
+import { getCollection, render } from 'astro:content';
+import type { GetStaticPaths } from 'astro';
+import Article from '../../layouts/Article.astro';
+import { readingTime } from '../../lib/url';
+
+export const getStaticPaths = (async () => {
+  const posts = await getCollection('research');
+  return posts
+    .filter((p) => !p.data.draft)
+    .map((post) => ({ params: { id: post.id }, props: { post } }));
+}) satisfies GetStaticPaths;
+
+const { post } = Astro.props;
+const { Content, headings } = await render(post);
+
+const kicker = post.data.series
+  ? `${post.data.series} — Part ${post.data.part ?? 1}`
+  : post.data.malware
+    ? `Analysis — ${post.data.malware}`
+    : 'Analysis';
+---
+
+<Article
+  title={post.data.title}
+  subtitle={post.data.subtitle}
+  summary={post.data.summary}
+  date={post.data.date}
+  updated={post.data.updated}
+  kicker={kicker}
+  readingTime={readingTime(post.body)}
+  tags={post.data.tags}
+  attack={post.data.attack}
+  headings={headings}
+  original={post.data.original}
+  backHref="/research"
+  backLabel="All research"
+>
+  <Content />
+</Article>

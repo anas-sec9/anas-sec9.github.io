@@ -1,0 +1,60 @@
+---
+interface Props {
+  n: string;
+  label: string;
+  title: string;
+  blurb?: string;
+  count?: string;
+}
+
+const { n, label, title, blurb, count } = Astro.props;
+---
+
+<header class="ph">
+  <div class="wrap wrap--wide">
+    <p class="kicker">
+      <span class="kicker__n">{n}</span>
+      <span>{label}</span>
+    </p>
+    <div class="ph__row">
+      <h1 class="display ph__title">{title}</h1>
+      {count && <span class="ph__count mono">{count}</span>}
+    </div>
+    {blurb && <p class="ph__blurb lead">{blurb}</p>}
+    <slot />
+  </div>
+</header>
+
+<style>
+  .ph {
+    padding-top: clamp(2.5rem, 1rem + 5vw, 5rem);
+    padding-bottom: var(--s-6);
+    border-bottom: 1px solid var(--line);
+    background: radial-gradient(60rem 22rem at 8% -30%, rgba(224, 164, 88, 0.07), transparent 70%);
+  }
+
+  .ph__row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-4);
+    margin-top: var(--s-4);
+  }
+
+  .ph__title {
+    font-size: var(--t-h1);
+    font-weight: 400;
+    color: var(--ink);
+  }
+
+  .ph__count {
+    font-size: var(--t-2xs);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  .ph__blurb {
+    margin-top: var(--s-4);
+    max-width: 62ch;
+  }
+</style>

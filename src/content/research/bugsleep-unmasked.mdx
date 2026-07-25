@@ -1,0 +1,251 @@
+---
+title: BugSleep, Unmasked
+subtitle: Reverse-engineering an Iranian APT backdoor — and the 6-byte trick that hid it
+date: 2026-07-07
+summary: >-
+  Every tool screamed "packed." There was no packer. BugSleep's entire encryption scheme is
+  subtracting 6 from each byte — and once I proved that, I could decrypt the whole family
+  without ever running a sample.
+malware: BugSleep
+actor: muddywater
+series: BugSleep
+part: 1
+original:
+  label: Medium
+  url: https://medium.com/@anasabdelalieem9/bugsleep-unmasked-44234eccd6bc
+tags: [muddywater, reverse-engineering, process-injection, yara, ghidra]
+attack:
+  - { id: 'T1055', name: 'Process Injection' }
+  - { id: 'T1055.003', name: 'Thread Execution Hijacking' }
+  - { id: 'T1140', name: 'Deobfuscate/Decode Files or Information' }
+  - { id: 'T1027', name: 'Obfuscated Files or Information' }
+  - { id: 'T1036.005', name: 'Masquerading: Match Legitimate Name or Location' }
+  - { id: 'T1571', name: 'Non-Standard Port' }
+  - { id: 'T1095', name: 'Non-Application Layer Protocol' }
+  - { id: 'T1106', name: 'Native API' }
+---
+
+import KeyFacts from '../../components/KeyFacts.astro';
+import Callout from '../../components/Callout.astro';
+import IOCs from '../../components/IOCs.astro';
+import Shot from '../../components/Shot.astro';
+
+I write detections for a living, and for a long time that meant writing them for malware I'd never
+actually opened. You read a vendor report, you copy the IOCs, you ship a rule. It works, but it
+always felt like reviewing a movie off the poster. So I stopped doing it that way. I picked a real
+backdoor from a real nation-state crew, took it apart myself, and only wrote the detections once I
+understood how the thing actually worked.
+
+Everything here happened in my own lab. Where I got something wrong on the first pass, I left it in
+and corrected it — because pretending you nailed it first try is how you end up sounding like a
+press release.
+
+The target was **BugSleep**, MuddyWater's custom backdoor.
+
+<KeyFacts
+  rows={[
+    { k: 'Family', v: 'BugSleep (a.k.a. MUDDYROT)', mono: false },
+    { k: 'Actor', v: 'MuddyWater / Earth Vetala — Iran nexus', mono: false },
+    { k: 'Sample', v: '73c677dd3b264e7eb80e26e78ac9df1dba30915b5ce3b1bc1c83db52b9c6b30e' },
+    { k: 'Build', v: '64-bit PE, Visual Studio 2019, ~May 2024', mono: false },
+    { k: 'Cipher', v: 'plaintext = ciphertext − 6  (also −8 for some strings)' },
+    { k: 'Injects into', v: 'msedge.exe' },
+    { k: 'C2', v: '91.235.234.202:443 — hardcoded, no DNS, not TLS' },
+  ]}
+/>
+
+## Who's MuddyWater, and what's BugSleep?
+
+MuddyWater is an Iran-nexus group — you'll also see them written up as Static Kitten, Mercury,
+Seedworm, or (Trend's name) Earth Vetala. They're tied to Iranian intelligence and they spend a lot
+of their time on targets across the Middle East, which is my part of the world. Phishing is their
+bread and butter.
+
+BugSleep is a backdoor they started using in mid-2024. On paper it's simple: run the operator's
+commands, move files in and out, phone home. The interesting part is *how* it hides — and that's the
+whole story here.
+
+## The lab
+
+Nothing fancy. A Windows analysis VM (FLARE-VM), fully isolated on a host-only network, with
+FakeNet-NG playing the role of "the entire internet" so the malware talks to me instead of its real
+C2. Snapshot before I detonate, revert after. Standard RE toolbox: DIE, PEStudio, FLOSS, CAPA,
+x64dbg, Ghidra, HollowsHunter.
+
+I pulled the sample from MalwareBazaar by hash:
+
+```
+SHA-256  73c677dd3b264e7eb80e26e78ac9df1dba30915b5ce3b1bc1c83db52b9c6b30e
+Size     246,784 bytes
+Type     64-bit PE, Visual Studio 2019
+```
+
+<Shot src="/shots/bugsleep-01-malwarebazaar.png" caption="MalwareBazaar entry for the sample — BugSleep family tag, 15 vendor detections, first seen May 2025." wide />
+
+I worked it the classic way: automated triage → static properties → dynamic behaviour → manual
+reversing. Let me take you through it the way it actually happened.
+
+## Static: the tools start disagreeing
+
+First look was normal. 64-bit PE, VS2019, compiled around May 2024 — lines up with when BugSleep
+first showed up.
+
+<Shot src="/shots/bugsleep-02-die-entropy.png" caption="Detect It Easy — Visual Studio 2019 toolchain, and the section entropy that started the argument." wide />
+
+Then the tools started contradicting each other. DIE flagged the `.text` section as high-entropy
+(7.81) and its heuristic literally shouted "packed." But there was no packer signature anywhere, and
+PEStudio showed almost **no imports** — just KERNEL32.
+
+<Shot src="/shots/bugsleep-04-pestudio-imports.png" caption="PEStudio — the entire import table. One library: KERNEL32.dll." wide />
+
+<Shot src="/shots/bugsleep-03-pestudio-imphash.png" caption="PEStudio indicators, with the imphash 5d30c32f609687ca146ba5bde4bc6d09 — useful as a pivot for related samples." wide />
+
+That's the real tell. This is a network backdoor, and it imports *no* socket library, *no* crypto
+library — nothing but KERNEL32. A program that talks over the network but doesn't import the
+networking APIs is resolving them at runtime to stay quiet. CAPA agreed, and named the mechanism
+outright: *resolve function by parsing PE exports*, *execute shellcode via indirect call*.
+
+<Shot src="/shots/bugsleep-05-capa.png" caption="CAPA — dynamic API resolution by parsing PE exports, plus shellcode execution via indirect call." wide />
+
+FLOSS confirmed the theme with a very specific list of strings:
+
+```
+msedge.exe  opera.exe  chrome.exe  anydesk.exe  Onedrive.exe  svchost.exe  powershell.exe
+```
+
+A backdoor carrying a hit-list of browsers and remote-access tools is a backdoor that hides inside a
+normal process. Hold that thought.
+
+## Dynamic: watching it lie
+
+I lit up FakeNet and detonated it. Almost immediately:
+
+<Shot src="/shots/bugsleep-06-fakenet-c2.png" caption="FakeNet-NG — an outbound TCP connection to 91.235.234.202:443, with no DNS query preceding it." wide />
+
+A connection to **91.235.234.202 on port 443**. Looks like HTTPS — except two things were off. There
+was **no DNS lookup** before it (a real browser always resolves a hostname first; this went straight
+to a hardcoded IP), and FakeNet couldn't parse a real TLS handshake out of it. So: hardcoded IP,
+port 443 to blend in, but not actually TLS. That's a backdoor wearing an HTTPS costume, and it's my
+C2.
+
+The part that made me sit up: the beacon was coming from **msedge.exe**. The browser. It had crawled
+inside Edge.
+
+## Proving the injection, not assuming it
+
+"It injects into Edge" is easy to say. I ran HollowsHunter to prove it — it scans every process for
+injected code and dumps it.
+
+<Shot src="/shots/bugsleep-07-hollowshunter.png" caption="HollowsHunter — 38 processes scanned, 7 flagged suspicious, msedge.exe at the top of the list." wide />
+
+HollowsHunter's aggressive mode is noisy (it flagged my own PowerShell windows too), so a flag alone
+isn't proof. The real test: I searched every dumped region for the C2 IP.
+
+<Shot src="/shots/bugsleep-08-injection-proof.png" caption="The proof — searching every .shc dump for 91.235.234.202 and hitting inside the msedge process dump." wide />
+
+<Callout type="finding">
+The Iranian C2 address is sitting as a plaintext string **inside memory dumped from Edge**.
+Legitimate Edge does not contain that. That's the injection, demonstrated rather than assumed.
+</Callout>
+
+That same dump handed me the rest of the config: the persistence path
+`C:\ProgramData\PackageManager\PackageManager.exe`, and a staging file `C:\Users\Public\a.txt`.
+
+<Shot src="/shots/bugsleep-09-config-from-dump.png" caption="The rest of the config pulled from the same dump — the mutex name, the ProgramData persistence path, and the C2." wide />
+
+For the mutex, I loaded the sample in x64dbg, set one breakpoint on `CreateMutexW`, and read the
+argument:
+
+<Shot src="/shots/bugsleep-10-x64dbg-mutex.png" caption="x64dbg paused at CreateMutexW — R8 holds L&quot;PackageManager&quot;, RSI holds the ProgramData self-copy path, and the dump pane shows the process hit-list." wide />
+
+`PackageManager`**.** And here's the little joke this malware plays: the mutex is `PackageManager`,
+the persistence file is `PackageManager.exe`, its folder is `\ProgramData\PackageManager\`. One
+boring, legit-sounding name reused for everything. Annoying to spot at a glance — but a gift once
+you know it.
+
+## The 6-byte punchline
+
+This is the part I came for. Everything so far told me *what* it does; I wanted to know how the
+config was hidden, because if I could crack that I could decrypt *any* BugSleep sample. I opened it
+in Ghidra, found the routine that touches the config, and stared at this loop:
+
+```nasm
+MOVDQA XMM6, [key]        ; XMM6 = 0x06 x16
+LEA    RSI, [config]
+loop:
+  MOVDQU XMM0, [RAX+RSI]  ; read 16 bytes
+  PSUBB  XMM0, XMM6       ; subtract 6 from each
+  MOVDQU [RAX+RSI], XMM0  ; write it back
+  ADD    RAX, 0x10
+  CMP    RAX, 0x30
+  JL     loop
+```
+
+<Shot src="/shots/bugsleep-11-ghidra-psubb.png" caption="Ghidra — MOVDQA XMM6 with the 0x06 key, the PSUBB decrypt loop at 0x140024af0, and the decompiler spelling it out as + -6." wide />
+
+<Callout type="finding">
+That's the "encryption." It **subtracts 6 from every byte.** All that entropy, the "packed!" panic,
+the "dynamic API resolution" — the real code was just sitting there minus 6. A tiny stub flips the
+whole code section back with `VirtualProtect` + subtract-6 and jumps in. There's no packer. There
+never was.
+</Callout>
+
+I didn't want to trust Ghidra blindly, so I took the encrypted bytes it showed me and subtracted 6
+by hand:
+
+<Shot src="/shots/bugsleep-12-hand-decrypt.png" caption="One line of Python against the ciphertext Ghidra showed me — giqgmksgtgmkxbv minus 6 is ackagemanager\p." />
+
+`giqgmksgtgmkxbv` − 6 = `ackagemanager\p` — the middle of `…packagemanager\packagemanager…`. Clean.
+The cipher is real, the key is `0x06`, and it decrypts.
+
+## Turning that into a weapon
+
+One decrypted sample is nice. A tool that decrypts the whole family is better. Since the cipher is
+just "subtract 6," I wrote a small extractor that peels the config out of any BugSleep sample — C2,
+paths, mutex — **without ever running it**.
+
+<Shot src="/shots/bugsleep-13-extractor.png" caption="The config extractor against the encrypted file — the process hit-list and both persistence paths recovered statically, with the per-string shift shown for each." wide />
+
+Running it on the real sample even surfaced something new: this build uses *two* different keys
+(shift 6 and shift 8 for different strings), which matches what Check Point noted about BugSleep
+varying its subtraction key. A single-key tool would've missed half of it.
+
+## The detections
+
+Reversing is fun, but detection is the point. I shipped the full set:
+
+- **YARA** keyed on the exact subtract-6 decrypt-loop bytes, required together with the process
+  hit-list — the strongest signal, since it survives the crew rotating their C2 or recompiling.
+- **Sigma** — the durable one is
+  [a remote thread created in `msedge.exe` by a non-Edge process](/detections/bugsleep-msedge-remote-thread).
+  That catches the *technique*, not just this sample.
+- **Suricata** for the C2 traffic, including a rule for non-TLS traffic on port 443.
+
+Every one of those is in the [detection library](/detections) with its telemetry requirements and
+false-positive notes.
+
+## IOCs
+
+<IOCs
+  items={[
+    { value: '73c677dd3b264e7eb80e26e78ac9df1dba30915b5ce3b1bc1c83db52b9c6b30e', type: 'sha256', context: 'The analysed BugSleep sample', confidence: 'high' },
+    { value: '5d30c32f609687ca146ba5bde4bc6d09', type: 'imphash', context: 'Import-hash pivot for related samples', confidence: 'high' },
+    { value: '91.235.234.202', type: 'ipv4', context: 'C2 — hardcoded, reached with no DNS resolution', confidence: 'high' },
+    { value: '91.235.234.202:443', type: 'c2', context: 'Beacon over TCP/443 using a custom non-TLS protocol, roughly every 60–80s', confidence: 'high' },
+    { value: 'C:\\ProgramData\\PackageManager\\PackageManager.exe', type: 'filepath', context: 'Self-copy for persistence, masquerading as a package manager', confidence: 'high' },
+    { value: 'PackageManager', type: 'mutex', context: 'Single-instance guard, created via CreateMutexW (session-local)', confidence: 'high' },
+    { value: 'C:\\Users\\Public\\a.txt', type: 'filepath', context: 'C2 command staging and output file', confidence: 'high' },
+    { value: 'msedge.exe', type: 'injection-target', context: 'Injection host, chosen so C2 traffic blends into browser traffic', confidence: 'high' },
+    { value: 'plaintext = ciphertext − 6', type: 'cipher', context: 'Config and code obfuscation; some strings in this build use −8 instead', confidence: 'high' },
+  ]}
+/>
+
+## Grab everything
+
+Full report, all rules, the config extractor, and the raw IOCs are on GitHub:
+[`threat-intel-reports/reports/muddywater_bugsleep`](https://github.com/anas-sec9/threat-intel-reports/tree/main/reports/muddywater_bugsleep).
+
+If you read this far — thanks. The best way to learn this stuff is to open a sample yourself. In
+[the next post](/research/catching-muddywater-live) I take this exact backdoor into my detection
+lab, detonate it for real, and see whether the rules I just wrote actually fire on SIEM, IDS and
+EDR.

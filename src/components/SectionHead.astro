@@ -1,0 +1,72 @@
+---
+import { href } from '../lib/url';
+
+interface Props {
+  /** Two-digit editorial index, e.g. "01". */
+  n?: string;
+  label: string;
+  title?: string;
+  blurb?: string;
+  moreHref?: string;
+  moreLabel?: string;
+}
+
+const { n, label, title, blurb, moreHref, moreLabel = 'View all' } = Astro.props;
+---
+
+<div class="sh">
+  <p class="kicker">
+    {n && <span class="kicker__n">{n}</span>}
+    <span>{label}</span>
+  </p>
+
+  {
+    (title || moreHref) && (
+      <div class="sh__row">
+        <div>
+          {title && <h2 class="display sh__title">{title}</h2>}
+          {blurb && <p class="sh__blurb">{blurb}</p>}
+        </div>
+        {moreHref && (
+          <a href={href(moreHref)} class="arrow sh__more">
+            {moreLabel}
+          </a>
+        )}
+      </div>
+    )
+  }
+</div>
+
+<style>
+  .sh {
+    margin-bottom: var(--s-6);
+  }
+
+  .sh__row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--s-5);
+    margin-top: var(--s-4);
+    flex-wrap: wrap;
+  }
+
+  .sh__title {
+    font-size: var(--t-h1);
+    font-weight: 400;
+    color: var(--ink);
+  }
+
+  .sh__blurb {
+    margin-top: var(--s-3);
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+    max-width: 52ch;
+    line-height: 1.6;
+  }
+
+  .sh__more {
+    padding-bottom: 0.4rem;
+    flex-shrink: 0;
+  }
+</style>

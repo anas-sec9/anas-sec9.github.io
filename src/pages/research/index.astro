@@ -1,0 +1,192 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import ResearchCard from '../../components/ResearchCard.astro';
+import { idx } from '../../lib/url';
+
+const posts = (await getCollection('research'))
+  .filter((p) => !p.data.draft)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+/** Group into series so multi-part investigations read as one thing. */
+const series = new Map<string, typeof posts>();
+const singles: typeof posts = [];
+
+for (const p of posts) {
+  if (p.data.series) {
+    const list = series.get(p.data.series) ?? [];
+    list.push(p);
+    series.set(p.data.series, list);
+  } else {
+    singles.push(p);
+  }
+}
+
+for (const list of series.values()) list.sort((a, b) => (a.data.part ?? 0) - (b.data.part ?? 0));
+---
+
+<Base
+  title="Research"
+  description="Malware reverse engineering write-ups — unpacking, config extraction, and the detections that came out of them."
+>
+  <PageHeader
+    n="01"
+    label="Research"
+    title="Reverse engineering write-ups"
+    count={`${posts.length} published`}
+    blurb="Full teardowns. Each one shows the path from sample to detection, including the parts where the published reporting and the binary disagreed."
+  />
+
+  <div class="wrap wrap--wide body">
+    {
+      [...series.entries()].map(([name, list]) => (
+        <section class="ser">
+          <div class="ser__head">
+            <p class="kicker kicker--plain ser__label">
+              <span class="kicker__n">Series</span>
+              <span>{name}</span>
+            </p>
+            <span class="ser__count mono">{list.length} parts</span>
+          </div>
+
+          <div class="ser__items">
+            {list.map((p, i) => (
+              <article class="ser__item">
+                <div class="ser__rail">
+                  <span class="ser__part mono">Part {p.data.part ?? i + 1}</span>
+                </div>
+                <ResearchCard
+                  variant="feature"
+                  n={idx(i + 1)}
+                  id={p.id}
+                  title={p.data.title}
+                  subtitle={p.data.subtitle}
+                  summary={p.data.summary}
+                  date={p.data.date}
+                  malware={p.data.malware}
+                />
+              </article>
+            ))}
+          </div>
+        </section>
+      ))
+    }
+
+    {
+      singles.length > 0 && (
+        <section class="singles">
+          {series.size > 0 && (
+            <p class="kicker singles__head">
+              <span>Standalone</span>
+            </p>
+          )}
+          <div class="cards">
+            {singles.map((p, i) => (
+              <ResearchCard
+                id={p.id}
+                n={idx(i + 1)}
+                title={p.data.title}
+                summary={p.data.summary}
+                date={p.data.date}
+                malware={p.data.malware}
+                tags={p.data.tags}
+              />
+            ))}
+          </div>
+        </section>
+      )
+    }
+
+    {
+      posts.length === 0 && (
+        <p class="empty">
+          Nothing published here yet. Analyses land here as they're finished — never before.
+        </p>
+      )
+    }
+  </div>
+</Base>
+
+<style>
+  .body {
+    padding-block: var(--s-8) var(--s-6);
+  }
+
+  .ser {
+    margin-bottom: var(--s-8);
+  }
+
+  .ser__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-4);
+    padding-bottom: var(--s-4);
+  }
+
+  .ser__label {
+    color: var(--ink-2);
+    font-size: var(--t-2xs);
+  }
+
+  .ser__count {
+    font-size: var(--t-2xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  .ser__items {
+    display: grid;
+  }
+
+  .ser__item {
+    position: relative;
+  }
+
+  .ser__item + .ser__item :global(.feat) {
+    border-top: 0;
+  }
+
+  .ser__rail {
+    position: absolute;
+    top: var(--s-6);
+    left: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .ser__part {
+    display: none;
+  }
+
+  .singles__head {
+    margin-bottom: var(--s-5);
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--s-4);
+  }
+
+  .empty {
+    padding: var(--s-8) 0;
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+    border-top: 1px solid var(--line);
+  }
+
+  @media (max-width: 62rem) {
+    .cards {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 42rem) {
+    .cards {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

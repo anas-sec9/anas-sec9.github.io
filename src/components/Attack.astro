@@ -1,0 +1,45 @@
+---
+import { attackUrl } from '../lib/url';
+
+interface Props {
+  items: { id: string; name: string }[];
+  /** `full` shows the technique name, `compact` shows IDs only. */
+  variant?: 'full' | 'compact';
+  label?: string;
+}
+
+const { items, variant = 'full', label } = Astro.props;
+---
+
+{
+  items.length > 0 && (
+    <div class="attack">
+      {label && <p class="attack__label">{label}</p>}
+      <div class="attack__list">
+        {items.map((t) => (
+          <a class="attk" href={attackUrl(t.id)} rel="noopener" title={`${t.id} — ${t.name}`}>
+            <span class="attk__id">{t.id}</span>
+            {variant === 'full' && <span class="attk__name">{t.name}</span>}
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+<style>
+  .attack__label {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    margin-bottom: var(--s-3);
+  }
+
+  .attack__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+</style>

@@ -1,0 +1,120 @@
+---
+import { getCollection } from 'astro:content';
+import type { GetStaticPaths } from 'astro';
+import Base from '../../layouts/Base.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import { href, fmtStamp } from '../../lib/url';
+
+export const getStaticPaths = (async () => {
+  const research = (await getCollection('research')).filter((e) => !e.data.draft);
+  const detections = (await getCollection('detections')).filter((e) => !e.data.draft);
+  const log = (await getCollection('log')).filter((e) => !e.data.draft);
+
+  const tags = new Set<string>();
+  for (const e of [...research, ...detections, ...log]) e.data.tags.forEach((t) => tags.add(t));
+
+  return [...tags].map((tag) => ({
+    params: { tag },
+    props: {
+      tag,
+      items: [
+        ...research
+          .filter((e) => e.data.tags.includes(tag))
+          .map((e) => ({ kind: 'Research', id: e.id, base: 'research', title: e.data.title, summary: e.data.summary, date: e.data.date })),
+        ...detections
+          .filter((e) => e.data.tags.includes(tag))
+          .map((e) => ({ kind: e.data.format.toUpperCase(), id: e.id, base: 'detections', title: e.data.title, summary: e.data.summary, date: e.data.date })),
+        ...log
+          .filter((e) => e.data.tags.includes(tag))
+          .map((e) => ({ kind: 'Log', id: e.id, base: 'log', title: e.data.title, summary: e.data.summary, date: e.data.date })),
+      ].sort((a, b) => b.date.valueOf() - a.date.valueOf()),
+    },
+  }));
+}) satisfies GetStaticPaths;
+
+const { tag, items } = Astro.props;
+---
+
+<Base title={`#${tag}`} description={`Everything tagged ${tag}.`}>
+  <PageHeader n="#" label="Tag" title={tag} count={`${items.length} ${items.length === 1 ? 'item' : 'items'}`} />
+
+  <div class="wrap body">
+    <div class="list">
+      {
+        items.map((i) => (
+          <a href={href(`/${i.base}/${i.id}`)} class="item">
+            <span class="item__kind mono">{i.kind}</span>
+            <span class="item__body">
+              <span class="item__title serif">{i.title}</span>
+              <span class="item__sum">{i.summary}</span>
+            </span>
+            <span class="item__date mono">{fmtStamp(i.date)}</span>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</Base>
+
+<style>
+  .body {
+    padding-block: var(--s-7);
+  }
+
+  .item {
+    display: grid;
+    grid-template-columns: 6rem minmax(0, 1fr) 6rem;
+    gap: var(--s-4);
+    align-items: baseline;
+    padding: var(--s-4) var(--s-3);
+    border-bottom: 1px solid var(--line-faint);
+    transition: background var(--dur) var(--ease);
+  }
+
+  .item:hover {
+    background: var(--bg-raised);
+  }
+
+  .item__kind {
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .item__body {
+    display: grid;
+    gap: var(--s-1);
+  }
+
+  .item__title {
+    font-size: 1.05rem;
+    color: var(--ink);
+  }
+
+  .item:hover .item__title {
+    color: var(--accent);
+  }
+
+  .item__sum {
+    font-size: var(--t-xs);
+    color: var(--ink-3);
+    line-height: 1.55;
+  }
+
+  .item__date {
+    font-size: var(--t-2xs);
+    color: var(--ink-4);
+    text-align: right;
+  }
+
+  @media (max-width: 46rem) {
+    .item {
+      grid-template-columns: 1fr;
+      gap: var(--s-2);
+    }
+    .item__date {
+      text-align: left;
+    }
+  }
+</style>

@@ -1,0 +1,144 @@
+---
+import { site, nav } from '../site.config';
+import { href } from '../lib/url';
+
+const year = new Date().getUTCFullYear();
+
+const links = [
+  site.author.github && { label: 'GitHub', url: site.author.github },
+  site.author.linkedin && { label: 'LinkedIn', url: site.author.linkedin },
+  site.author.x && { label: 'X', url: site.author.x },
+  site.author.email && { label: 'Email', url: `mailto:${site.author.email}` },
+].filter(Boolean) as { label: string; url: string }[];
+---
+
+<footer class="foot">
+  <div class="wrap wrap--wide">
+    <div class="foot__grid">
+      <div class="foot__brand">
+        <a href={href('/')} class="foot__mark">
+          <span class="foot__mark-a">{site.nameParts[0]}</span><span class="foot__mark-b">{site.nameParts[1]}</span>
+        </a>
+        <p class="foot__tag">{site.tagline}</p>
+      </div>
+
+      <div class="foot__col">
+        <p class="foot__head">Sections</p>
+        {nav.map((i) => <a href={href(i.href)} class="foot__link">{i.label}</a>)}
+      </div>
+
+      <div class="foot__col">
+        <p class="foot__head">Elsewhere</p>
+        {links.map((l) => <a href={l.url} class="foot__link" rel="me noopener">{l.label}</a>)}
+        <a href={href('/rss.xml')} class="foot__link">RSS</a>
+      </div>
+
+      <div class="foot__col foot__col--wide">
+        <p class="foot__head">Handling</p>
+        <p class="foot__note">{site.disclaimer}</p>
+      </div>
+    </div>
+
+    <div class="foot__base">
+      <span class="mono">© {year} {site.author.name}</span>
+      <span class="mono foot__built">Built by hand · Astro · no trackers</span>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .foot {
+    border-top: 1px solid var(--line);
+    background: var(--bg-sunken);
+    padding-block: var(--s-8) var(--s-6);
+    margin-top: var(--s-10);
+  }
+
+  .foot__grid {
+    display: grid;
+    grid-template-columns: 1.6fr 0.7fr 0.7fr 1.3fr;
+    gap: var(--s-6);
+  }
+
+  .foot__mark {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    line-height: 1;
+    display: inline-block;
+  }
+
+  .foot__mark-a {
+    font-weight: 300;
+    color: var(--ink-3);
+  }
+
+  .foot__mark-b {
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+
+  .foot__tag {
+    margin-top: var(--s-3);
+    font-size: var(--t-sm);
+    color: var(--ink-3);
+    max-width: 30ch;
+    line-height: 1.55;
+  }
+
+  .foot__col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+  }
+
+  .foot__head {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    margin-bottom: var(--s-1);
+  }
+
+  .foot__link {
+    font-size: var(--t-sm);
+    color: var(--ink-3);
+    transition: color var(--dur) var(--ease);
+    width: fit-content;
+  }
+
+  .foot__link:hover {
+    color: var(--accent);
+  }
+
+  .foot__note {
+    font-size: var(--t-xs);
+    color: var(--ink-4);
+    line-height: 1.6;
+    border-left: 1px solid var(--line-strong);
+    padding-left: var(--s-3);
+  }
+
+  .foot__base {
+    margin-top: var(--s-7);
+    padding-top: var(--s-4);
+    border-top: 1px solid var(--line-faint);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.06em;
+    color: var(--ink-4);
+  }
+
+  @media (max-width: 60rem) {
+    .foot__grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .foot__brand,
+    .foot__col--wide {
+      grid-column: 1 / -1;
+    }
+  }
+</style>

@@ -1,0 +1,173 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import { href, fmtDate } from '../../lib/url';
+
+const entries = (await getCollection('log'))
+  .filter((e) => !e.data.draft)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+/** Group by year so the timeline reads as a history, not a feed. */
+const years = new Map<number, typeof entries>();
+for (const e of entries) {
+  const y = e.data.date.getUTCFullYear();
+  years.set(y, [...(years.get(y) ?? []), e]);
+}
+---
+
+<Base
+  title="Log"
+  description="Working notes from the lab — hunts run, rules that broke, and things learned the hard way."
+>
+  <PageHeader
+    n="04"
+    label="Build log"
+    title="From the bench"
+    count={`${entries.length} entries`}
+    blurb="Short notes rather than finished analysis. Lab builds, hunts that went nowhere, rules that fell over in testing. Kept public because the failures are the useful part."
+  />
+
+  <div class="wrap body">
+    {
+      [...years.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([year, list]) => (
+          <section class="yr">
+            <p class="yr__label display">{year}</p>
+            <div class="yr__items">
+              {list.map((e) => (
+                <a href={href(`/log/${e.id}`)} class="entry">
+                  <div class="entry__meta">
+                    <time class="mono entry__date" datetime={e.data.date.toISOString()}>
+                      {fmtDate(e.data.date)}
+                    </time>
+                    {e.data.track && <span class="badge entry__track">{e.data.track}</span>}
+                  </div>
+                  <h2 class="entry__title serif">{e.data.title}</h2>
+                  <p class="entry__sum">{e.data.summary}</p>
+                </a>
+              ))}
+            </div>
+          </section>
+        ))
+    }
+
+    {entries.length === 0 && <p class="empty">No entries yet.</p>}
+  </div>
+</Base>
+
+<style>
+  .body {
+    padding-block: var(--s-8);
+  }
+
+  .yr {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: var(--s-6);
+    margin-bottom: var(--s-8);
+  }
+
+  .yr__label {
+    font-size: 2.4rem;
+    font-weight: 300;
+    color: var(--ink-4);
+    line-height: 1;
+    position: sticky;
+    top: 6rem;
+  }
+
+  .yr__items {
+    border-left: 1px solid var(--line);
+    padding-left: var(--s-6);
+  }
+
+  .entry {
+    display: block;
+    position: relative;
+    padding-block: var(--s-5);
+    border-bottom: 1px solid var(--line-faint);
+  }
+
+  .entry:last-child {
+    border-bottom: 0;
+  }
+
+  /* timeline node */
+  .entry::before {
+    content: '';
+    position: absolute;
+    left: calc(-1 * var(--s-6) - 4px);
+    top: calc(var(--s-5) + 0.55rem);
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px solid var(--line-strong);
+    transition: all var(--dur) var(--ease);
+  }
+
+  .entry:hover::before {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-wash);
+  }
+
+  .entry__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+  }
+
+  .entry__date {
+    font-size: var(--t-2xs);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  .entry__title {
+    margin-top: var(--s-3);
+    font-size: 1.35rem;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1.25;
+  }
+
+  .entry:hover .entry__title {
+    color: var(--accent);
+  }
+
+  .entry__sum {
+    margin-top: var(--s-2);
+    font-size: var(--t-sm);
+    line-height: 1.65;
+    color: var(--ink-3);
+    max-width: 64ch;
+  }
+
+  .empty {
+    padding: var(--s-8) 0;
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+
+  @media (max-width: 46rem) {
+    .yr {
+      grid-template-columns: 1fr;
+      gap: var(--s-4);
+    }
+    .yr__label {
+      position: static;
+      font-size: 1.6rem;
+    }
+    .yr__items {
+      padding-left: var(--s-5);
+    }
+    .entry::before {
+      left: calc(-1 * var(--s-5) - 4px);
+    }
+  }
+</style>

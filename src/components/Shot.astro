@@ -1,0 +1,70 @@
+---
+/**
+ * Figure slot. Pass `src` once the screenshot exists in /public/shots/.
+ * Without `src` it renders a clearly-marked placeholder describing what
+ * belongs there — so an unfinished post looks unfinished instead of
+ * silently missing evidence.
+ */
+interface Props {
+  src?: string;
+  alt?: string;
+  caption: string;
+  /** Break out of the prose measure for wide terminal/Ghidra captures. */
+  wide?: boolean;
+}
+
+const { src, alt, caption, wide = false } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<figure class:list={['shot', { bleed: wide }]}>
+  {
+    src ? (
+      <img src={src.startsWith('http') ? src : `${base}${src}`} alt={alt ?? caption} loading="lazy" decoding="async" />
+    ) : (
+      <div class="shot__slot">
+        <span class="shot__tag mono">Figure</span>
+        <span class="shot__desc">{caption}</span>
+      </div>
+    )
+  }
+  {src && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  .shot {
+    margin-block: 2em;
+  }
+
+  .shot__slot {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    padding: var(--s-6) var(--s-5);
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--r-2);
+    background: repeating-linear-gradient(
+      135deg,
+      transparent,
+      transparent 10px,
+      rgba(255, 255, 255, 0.012) 10px,
+      rgba(255, 255, 255, 0.012) 20px
+    );
+    text-align: center;
+    align-items: center;
+  }
+
+  .shot__tag {
+    font-size: var(--t-2xs);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .shot__desc {
+    font-size: var(--t-sm);
+    color: var(--ink-3);
+    max-width: 52ch;
+    line-height: 1.6;
+  }
+</style>

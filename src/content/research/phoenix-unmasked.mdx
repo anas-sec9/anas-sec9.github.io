@@ -1,0 +1,354 @@
+---
+title: Phoenix, Unmasked
+subtitle: Reverse-engineering MuddyWater's 2025 backdoor — and why the "AES" everyone reported wasn't there
+date: 2026-07-09
+summary: >-
+  Every published write-up called Phoenix AES-encrypted. I went in expecting to crack AES and
+  found a 32-byte repeating XOR key sitting in plaintext in .data. Here's the full teardown,
+  the extractor, and exactly how far I can prove it.
+malware: Phoenix
+actor: muddywater
+series: Phoenix
+part: 1
+featured: true
+tags: [muddywater, reverse-engineering, maldoc, unpacking, yara]
+attack:
+  - { id: 'T1566.001', name: 'Spearphishing Attachment' }
+  - { id: 'T1204.002', name: 'User Execution: Malicious File' }
+  - { id: 'T1059.003', name: 'Windows Command Shell' }
+  - { id: 'T1140', name: 'Deobfuscate/Decode Files or Information' }
+  - { id: 'T1036.008', name: 'Masquerade File Type' }
+  - { id: 'T1027.009', name: 'Embedded Payloads' }
+  - { id: 'T1071.001', name: 'Application Layer Protocol: Web Protocols' }
+  - { id: 'T1082', name: 'System Information Discovery' }
+---
+
+import KeyFacts from '../../components/KeyFacts.astro';
+import Callout from '../../components/Callout.astro';
+import IOCs from '../../components/IOCs.astro';
+import Shot from '../../components/Shot.astro';
+
+A while back I took apart [BugSleep](/research/bugsleep-unmasked), MuddyWater's older backdoor, and
+wrote detections from what I actually found instead of from a vendor PDF. It went well enough that I
+wanted a harder one —
+something newer, and ideally something where the public reporting and the sample would give me a
+reason to argue with myself.
+
+I got exactly that.
+
+This time the target was **Phoenix**, the backdoor MuddyWater ran through 2025 against government
+targets across the Middle East, North Africa, and a few other places. Every published write-up I
+could find described it the same way: AES-encrypted. I went in expecting to crack AES. I did not
+crack AES, because there wasn't any — at least not where everyone said it was. That disagreement is
+the spine of this whole post, and I'm going to show you exactly how I got there so you can check my
+work.
+
+Same rules as last time: everything happened in my own isolated lab, and where I was wrong on the
+first pass I left it in and corrected it. Pretending you nailed it first try is how you end up
+sounding like a press release.
+
+<KeyFacts
+  rows={[
+    { k: 'Family', v: 'Phoenix (v2/v3)', mono: false },
+    { k: 'Actor', v: 'MuddyWater / Earth Vetala — Iran nexus', mono: false },
+    { k: 'Delivery', v: 'Phishing .doc, VBA macro, payload hidden in a UserForm', mono: false },
+    { k: 'Packing', v: 'Repeating 32-byte XOR, then strip every 11th byte' },
+    { k: 'Reported as', v: 'AES — not present in this build', mono: false },
+    { k: 'C2', v: 'netivtech.org/register' },
+    { k: 'Config', v: 'Assembled at runtime; never plaintext on disk', mono: false },
+  ]}
+/>
+
+## Who's MuddyWater, and what's Phoenix?
+
+MuddyWater is an Iran-nexus crew — you'll also see them as Earth Vetala, Static Kitten, Mercury, or
+Seedworm. They're tied to Iranian intelligence, they lean heavily on phishing, and they spend a lot
+of time on targets in my part of the world.
+
+Phoenix is a backdoor they pushed hard in 2025 — Group-IB tied it to a campaign hitting 100+
+government organizations. It's named after the string sitting in its own debug path (the developers
+left `phoenix.pdb` baked into the build, complete with a `phonix` typo in the folder name — hold
+that thought, it becomes useful later). Functionally it's a straightforward implant: register with a
+C2, take commands, run them. The interesting parts are how it's delivered and how it's hidden.
+
+## The lab
+
+Nothing exotic. A Windows analysis VM (FLARE-VM), fully isolated on a host-only network, with
+FakeNet-NG standing in for the whole internet so the malware talks to me instead of its real C2.
+Snapshot before detonation, revert after. Usual toolbox: DIE, PEStudio, FLOSS, CAPA, Ghidra,
+HollowsHunter, procdump, and a lot of small Python scripts.
+
+I started from the phishing document. Two hashes matter up front:
+
+```
+Maldoc   40dead1e1d83107698ff96bce9ea52236803b15b63fb0002e0b55af71a9b5e05
+Lure     Hebrew-language "New protocols and rules.doc", impersonating netivtech
+```
+
+<Shot src="/shots/phoenix-01-maldoc-hash.png" caption="The maldoc, hashed on the analysis VM — 40DEAD1E…B5E05." />
+
+## The document: a macro that hides its own payload
+
+`oleid` and `olevba` told the story fast. The doc has a VBA macro that runs on open
+(`Document_Open`), and it's carrying a big blob of hex-encoded data inside a UserForm textbox — not
+in the code, in the *form*, which is where a lazy `strings` pass won't look.
+
+<Shot src="/shots/phoenix-02-oleid.png" caption="oleid — VBA macros present and flagged HIGH risk, on an MS Word 97-2003 container." wide />
+
+The flow is almost cartoonishly deliberate:
+
+1. Read a hex string out of `UserForm1.TextBox1`.
+2. Decode it to bytes.
+3. Write it to `C:\Users\Public\hostmanager.txt`.
+4. Rename `.txt` → `.png` → `.log` — cycling extensions so nothing watching for a dropped `.exe`
+   gets excited.
+5. Run it: `cmd.exe /C C:\Users\Public\hostmanager.log`.
+
+So the real payload never touches disk as an executable and never shows up in the macro body. It
+lives as hex inside the form. I pulled that stream and carved the PE straight out of it — the form
+stored the hex as UTF-16, which is why the stream was 2.5 MB for a 634 KB executable.
+
+<Shot src="/shots/phoenix-03-oledump-streams.png" caption="oledump — the document's streams. Macros/UserForm1/o is 1,268,792 bytes: the hex-encoded payload, sitting in the form rather than the macro body." wide />
+
+That gave me the **stage-2 loader**:
+
+```
+Loader   e9a59bbb4e2c28130d4daae12219f7ec2876c66ca9ab7e051cbf587770afab94
+Type     64-bit PE, Visual Studio 2022, compiled April 2025
+```
+
+<Shot src="/shots/phoenix-04-carve-loader.png" caption="Carving the PE out of the UTF-16 hex stream — 634,368 bytes, MZ confirmed, PE header at offset 256, and the resulting SHA-256." wide />
+
+## Static: a loader that's obviously hiding something
+
+First look at the loader lined up with a packer-style stub. The `.text` section is small (63 KB),
+but `.rdata` is huge — 545 KB — and its entropy is **7.36**. High-entropy `.rdata` that big isn't
+string tables; it's an encrypted blob. Imports were basically KERNEL32 only, with
+`LoadLibrary`/`GetProcAddress` present, which means the real APIs get resolved at runtime.
+
+<Shot src="/shots/phoenix-05-die-entropy.png" caption="DIE reports the loader as packed(92%), and the section view shows .rdata at 7.30 entropy — the embedded encrypted payload." wide />
+
+So: a small loader carrying a big encrypted payload it decrypts and runs. Fine. Now — what's the
+cipher? Every report said AES. So I went looking for AES.
+
+## The part where I go looking for AES and don't find it
+
+This is the bit I want to be careful about, because it would be easy to just repeat "AES" and move
+on. I didn't want to assume; I wanted to *see* it. AES leaves fingerprints, so I checked for every
+one of them:
+
+- **AES-NI** (the CPU doing AES in hardware) — scan for the `AESENC`/`AESDEC`/`AESKEYGENASSIST`
+  opcodes. Nothing.
+- **Software AES tables** — the forward S-box, the inverse S-box, the T-tables. Nothing.
+- **Windows crypto** — `BCrypt*` (CNG) or `CryptDecrypt` (legacy), and the `CALG_AES_256` constant.
+  Nothing.
+- **ChaCha**, in case it was mislabeled — its `"expand 32-byte k"` constant. Nothing.
+
+<Shot caption="Crypto-triage output — no AES-NI opcodes, no S-box, no CALG constants, no BCrypt imports." />
+
+High entropy fooled the assumption. A 7.36-entropy blob *looks* AES-encrypted, but RC4, a custom
+stream cipher, or plain XOR against a long key all look identical on an entropy meter. So instead of
+guessing, I opened the loader in Ghidra and read the thing that actually touches the blob.
+
+## Reading the loader instead of guessing it
+
+The loader's `main` was small enough to read top to bottom. Cleaned up, it does this:
+
+```c
+buf = VirtualAlloc(0, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+memcpy(buf, &encrypted_blob, size);          // copy .rdata blob
+decrypt(buf, size, key);                     // <-- the cipher
+destuff(buf, size, &out, &outlen);           // <-- a second layer
+entry = load_pe(out);                        // map it, get entrypoint
+CreateThread(0, 0, entry, 0, 0, 0);          // run it, in THIS process
+WaitForSingleObject(thread, INFINITE);
+```
+
+<Shot caption="Ghidra — the decompiled loader main: VirtualAlloc, memcpy, decrypt, destuff, CreateThread." wide />
+
+First thing worth saying: it runs the payload with `CreateThread` **in its own process**. No
+injection into a browser, no `WriteProcessMemory` into a signed binary — the exact opposite of
+BugSleep, which crawled inside Edge. Same crew, completely different tradecraft. Worth remembering
+when you write detections: a rule tuned to Phoenix's delivery would never have caught BugSleep, and
+vice-versa.
+
+Then I opened the `decrypt` routine. Here it is, in full:
+
+```c
+for (i = 0; i < size; i++)
+    data[i] ^= key[i % 0x20];
+```
+
+<Shot caption="Ghidra — the XOR decrypt loop, key indexed modulo 0x20." />
+
+<Callout type="finding">
+That's it. **Repeating XOR with a 32-byte key.** Not AES. Not RC4. XOR — the first cipher anyone
+learns and the one everyone swears real malware doesn't use. The key isn't derived or hidden
+either; it's sitting in plaintext at the top of `.data`, a keyboard-mash string a developer clearly
+typed once and never thought about again: `edwfwergrtgtrgt5hyhy6hghtbgbt5by`
+</Callout>
+
+<Shot caption="The 32-byte XOR key sitting in plaintext at the start of .data." />
+
+There was a second, smaller layer too: after the XOR, a routine walks the buffer keeping 10 bytes
+and dropping every 11th. It's a byte-stuffing trick — insert a junk byte every ten and the payload
+looks even more random on disk, then strip them back out at runtime. Cute, and it raised the entropy
+just enough to sell the "AES" look.
+
+## Turning it into a tool that never runs the malware
+
+One decrypted sample is fine. A tool that decrypts *any* Phoenix loader statically is better. Since
+I now knew the whole scheme — XOR-32, then de-stuff — I wrote an extractor that peels the core out
+of the loader without executing it. It parses the PE, grabs the key from `.data`, XORs the blob,
+de-stuffs it, and drops a clean payload.
+
+<Shot caption="The extractor — recovered a 468 KB x64 PE, with its SHA-256." />
+
+Out came a valid 468 KB x64 PE. A wrong key or wrong algorithm gives you garbage, not a valid PE
+header with the correct machine field at the right offset — so the scheme was confirmed by the
+output itself.
+
+Then I made it better. The key is per-sample, and so are the offsets, so I wrote a *generic* version
+that recovers the key automatically: every Phoenix core is a PE, so its decrypted output has to
+start with the standard MSVC DOS header. I use those ~60 known header bytes as a crib to solve the
+32-byte key and locate the blob — no reversing needed per sample. It reproduced the hand-derived
+result byte-for-byte, and later cracked a second loader I'd never seen.
+
+<Shot caption="The generic extractor auto-recovering the XOR key from an unseen loader." />
+
+## Where the config actually lives
+
+Here's the twist that finally explained the "AES" reports. I scanned the decrypted core for its C2
+and found… nothing. No `netivtech`, no URL, no user-agent in plaintext. The config isn't stored in
+the file at all — the core **builds it at runtime**, assembling the strings in memory as it runs.
+
+So I detonated the core with FakeNet watching, let it register, then took a full memory dump and
+read the config out of the live process:
+
+<Shot caption="FakeNet-NG — the DNS query for netivtech.org coming from the detonated payload." />
+
+<Shot caption="The memory dump — netivtech.org, /register, the WinHTTP user-agent, and the base64 beacon body." wide />
+
+The full config, recovered from memory:
+
+```
+C2            netivtech.org           (VT-confirmed malicious)
+Register      https://netivtech.org/register
+Poll          https://netivtech.org/
+User-Agent    Mozilla/5.0 (Windows NT 10.0; Win64; x64) WinHttpClient/1.0
+Beacon body   base64( HOST\user:OSver, build:priv )
+```
+
+That last one decodes to something like `DESKTOP-HBPB2TF\anas-lab:10.0, 19045:5` — hostname,
+username, OS build. Its first check-in literally hands the operator the box's identity. (The
+user-agent, by the way, is lifted straight from Microsoft's own WinHTTP sample code — the string
+`WinHTTP Example/1.0` is still in the binary. Low effort, high signal for us.)
+
+## So, about that AES
+
+Here's the honest reconciliation, scoped to exactly what I can prove:
+
+- The **loader's payload** is XOR + byte-stuffing. Demonstrated in code and by a working extractor.
+  Not AES.
+- The **core's config** isn't encrypted with anything — it's assembled at runtime. I checked the
+  core the same five ways and found no AES there either.
+- The only place AES *could* still be hiding is the **live C2 tasking channel** — the data Phoenix
+  encrypts to talk to its operator. I never saw that, because I sinkholed the C2 and it never got
+  real tasking. And even that's unlikely: a real AES path would have left `CALG` constants or
+  resolvable API names, and there are none.
+
+<Callout type="caveat" title="What I am and am not claiming">
+I'm not going to tell you Group-IB was wrong — they may well have analyzed a different build (the
+sample's own PDB path shows `phoenixV2`/`phoenixV3` nesting, so this thing gets recompiled a lot).
+What I *can* say, with evidence, is that **in this build, there is no AES where the reports put
+it.** Forcing my findings to match the published label would be exactly the kind of thing I'm trying
+not to do.
+</Callout>
+
+## Proving it against samples I didn't cook myself
+
+A finding from one sample is a hypothesis. So I went to MalwareBazaar and pivoted on the developers'
+own typo — the `Phoniex` tag (yes, misspelled the same way as their build folder). Two samples: an
+EXE and a document, both from a *Hungarian*-lure campaign — different from my Israeli/`netivtech`
+one.
+
+<Shot caption="MalwareBazaar — the two samples carrying the actor's misspelled Phoniex tag." />
+
+The EXE (`b99edfb9…`) turned out to be a Phoenix **core** — near-identical section layout to the one
+I'd decrypted, same runtime-built config, compiled a couple months apart. An independently-sourced
+sibling of my core. That alone cross-validated my whole extraction: two roads, same backdoor.
+
+Then the document. I carved its embedded payload the same way — and it dropped straight out as a
+**467,968-byte PE with no XOR packing at all**, whose hash matched `b99edfb9` exactly. So the
+Hungarian maldoc doesn't use the packed loader; it **embeds the core directly**, drops it as
+`Updater_VB.exe`, and runs it via `ShellExecuteA`.
+
+<Shot caption="The hash match — the payload carved from the Hungarian doc equals b99edfb9 exactly." />
+
+That's a real finding, not trivia: **MuddyWater ships Phoenix two different ways.**
+
+```
+Israel / netivtech (mine)   maldoc -> XOR-packed stage-2 loader -> decrypt -> core
+Hungary (Phoniex)           maldoc -> core embedded directly, dropped as Updater_VB.exe
+```
+
+Same backdoor, two delivery styles — which changes how you have to detect it.
+
+## The detections
+
+Because of those two delivery styles, one rule was never going to be enough. I shipped a set:
+
+- **YARA (loader)** — anchored on the XOR key string *and* the encrypted-blob structure together,
+  so neither fires alone. Catches the packed variant.
+- **YARA (core)** — the durable one. I diffed two independently-sourced cores to find code they
+  share, then *subtracted* everything the loader and the C runtime also contain, so no compiler
+  boilerplate leaks in. What's left is Phoenix's own code. It fires on every core I have and stays
+  quiet on the loader and on `notepad.exe`. This is the rule that catches the backdoor no matter how
+  it's delivered.
+- **YARA (memory)** — the decrypted config, for process dumps.
+- **Suricata** — DNS and TLS SNI for the C2 (it beacons over HTTPS, so the URI and user-agent live
+  at your proxy/TLS-inspection layer, not on the raw wire — I split those correctly instead of
+  writing a rule that can't fire).
+- **Sigma** — the delivery chain (Office spawning a shell that touches `Users\Public\hostmanager.*`
+  or drops `Updater_VB.exe`) and the proxy beacon.
+
+Everything's mapped to ATT&CK and every rule compiles and was validated against real samples, not
+just eyeballed. How I built the core rule without accidentally matching every Visual Studio binary
+on earth is the subject of [part two](/research/hunting-phoenix).
+
+## IOCs
+
+<IOCs
+  items={[
+    { value: '40dead1e1d83107698ff96bce9ea52236803b15b63fb0002e0b55af71a9b5e05', type: 'sha256', context: 'Phishing Word maldoc — Hebrew lure, macro dropper (Israel campaign)', confidence: 'high' },
+    { value: 'e9a59bbb4e2c28130d4daae12219f7ec2876c66ca9ab7e051cbf587770afab94', type: 'sha256', context: 'Stage-2 loader PE carved from the maldoc; XOR + byte-stuffed payload in .rdata', confidence: 'high' },
+    { value: 'e9d376e8113e48675daee0294dd0ccdc901e1a6fb782591e2989294dbdc8dc62', type: 'sha256', context: 'Decrypted Phoenix core (468 KB x64 PE) — static extractor output, byte-identical to the in-memory copy', confidence: 'high' },
+    { value: 'c3afd5ce1ca50a38438bb5026cca27bfbf2d8e786e03f323adceb8ad17517eca', type: 'sha256', context: 'Hungary-lure Phoenix maldoc — embeds the core directly, runs it via ShellExecuteA', confidence: 'high' },
+    { value: 'b99edfb9ef9e1fb4a587e4a4a66d1947739036887dd22e24602c877b0045f070', type: 'sha256', context: 'Phoenix core, Hungary build — dropped as Updater_VB.exe; sibling of e9d376e8', confidence: 'high' },
+    { value: 'netivtech.org', type: 'domain', context: 'C2 of this sample — recovered from process memory, corroborated malicious on VirusTotal', confidence: 'high' },
+    { value: 'https://netivtech.org/register', type: 'url', context: 'Registration / check-in endpoint (initial beacon)', confidence: 'high' },
+    { value: 'https://netivtech.org/', type: 'url', context: 'Task / poll endpoint (post-registration)', confidence: 'high' },
+    { value: 'screenai.online', type: 'domain', context: 'Phoenix C2 per Group-IB, other samples — not observed in my build', confidence: 'medium' },
+    { value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) WinHttpClient/1.0', type: 'user-agent', context: 'Hardcoded WinHTTP UA, lifted from Microsoft sample code — strong network IOC', confidence: 'high' },
+    { value: 'edwfwergrtgtrgt5hyhy6hghtbgbt5by', type: 'xor-key', context: '32-byte repeating XOR key for the .rdata payload, at .data[0:0x20]', confidence: 'high' },
+    { value: 'C:\\Users\\Public\\hostmanager.log', type: 'filepath', context: 'Dropped and executed stage-2, renamed .txt → .png → .log', confidence: 'high' },
+    { value: 'C:\\Users\\Public\\hostmanager.txt', type: 'filepath', context: 'Drop intermediate name', confidence: 'medium' },
+    { value: 'C:\\Users\\Public\\hostmanager.png', type: 'filepath', context: 'Drop intermediate name', confidence: 'medium' },
+    { value: 'Updater_VB.exe', type: 'filename', context: 'Core drop name in the Hungary campaign — no XOR loader involved', confidence: 'high' },
+    { value: 'D:\\phonix\\phoenixV3\\phoenixV3\\phoenixV2\\x64\\Release\\phoenix.pdb', type: 'pdb-path', context: 'Developer build path in stage-2 — confirms Phoenix v2/v3, note the phonix typo', confidence: 'high' },
+    { value: 'sysprocupdate.exe', type: 'mutex/filename', context: 'Phoenix persistence per Group-IB — UNCONFIRMED in this build; run was C2-gated and it never dropped', confidence: 'low' },
+  ]}
+/>
+
+## Grab everything
+
+The YARA rules, both extractors (including the generic auto-key one), the Suricata and Sigma, and
+the full IOC set are on GitHub:
+[`threat-intel-reports/reports/muddywater_phoenix`](https://github.com/anas-sec9/threat-intel-reports).
+
+If you take one thing from this: don't inherit a claim you can't reproduce. The reports said AES,
+the entropy said AES, and it still wasn't AES. The only way to know was to open it.
+
+In [the next post](/research/hunting-phoenix) I take these detections and put them to work —
+validating them across the samples, walking the two delivery chains, and being honest about what
+I've proven and what's still on the bench.

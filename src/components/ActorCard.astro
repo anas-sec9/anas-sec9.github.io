@@ -1,0 +1,197 @@
+---
+import { href } from '../lib/url';
+
+interface Props {
+  id: string;
+  name: string;
+  aliases?: string[];
+  nexus?: string;
+  summary: string;
+  status: string;
+  attribution: string;
+  malware?: string[];
+  n?: string;
+}
+
+const { id, name, aliases = [], nexus, summary, status, attribution, malware = [], n } = Astro.props;
+---
+
+<a href={href(`/actors/${id}`)} class="ac">
+  <div class="ac__head">
+    <span class="ac__n mono">{n}</span>
+    <span class:list={['ac__status', `is-${status}`]}>{status}</span>
+  </div>
+
+  <h3 class="ac__name display">{name}</h3>
+
+  {
+    aliases.length > 0 && (
+      <p class="ac__aliases mono">
+        {aliases.slice(0, 4).join(' · ')}
+      </p>
+    )
+  }
+
+  <p class="ac__sum">{summary}</p>
+
+  <dl class="ac__facts">
+    {
+      nexus && (
+        <div>
+          <dt>Nexus</dt>
+          <dd>{nexus}</dd>
+        </div>
+      )
+    }
+    <div>
+      <dt>Attribution</dt>
+      <dd class:list={[`attr-${attribution}`]}>{attribution}</dd>
+    </div>
+    {
+      malware.length > 0 && (
+        <div>
+          <dt>Tooling</dt>
+          <dd>{malware.slice(0, 3).join(', ')}</dd>
+        </div>
+      )
+    }
+  </dl>
+</a>
+
+<style>
+  .ac {
+    display: flex;
+    flex-direction: column;
+    padding: var(--s-5);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    background: var(--bg-raised);
+    position: relative;
+    overflow: hidden;
+    transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+    height: 100%;
+  }
+
+  .ac::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 2px;
+    background: var(--accent);
+    transform: scaleY(0);
+    transform-origin: top;
+    transition: transform 260ms var(--ease);
+  }
+
+  .ac:hover {
+    border-color: var(--line-strong);
+    transform: translateY(-2px);
+  }
+
+  .ac:hover::before {
+    transform: scaleY(1);
+  }
+
+  .ac__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .ac__n {
+    font-size: var(--t-2xs);
+    color: var(--accent);
+    letter-spacing: 0.1em;
+  }
+
+  .ac__status {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    display: flex;
+    align-items: center;
+    gap: 0.5ch;
+  }
+
+  .ac__status::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--ink-4);
+  }
+
+  .ac__status.is-tracking {
+    color: var(--ok);
+  }
+
+  .ac__status.is-tracking::before {
+    background: var(--ok);
+    box-shadow: 0 0 0 3px var(--ok-wash);
+  }
+
+  .ac__name {
+    margin-top: var(--s-4);
+    font-size: 1.7rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  .ac__aliases {
+    margin-top: var(--s-2);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.06em;
+    color: var(--ink-4);
+    text-transform: uppercase;
+  }
+
+  .ac__sum {
+    margin-top: var(--s-4);
+    font-size: var(--t-sm);
+    line-height: 1.65;
+    color: var(--ink-3);
+    flex: 1;
+  }
+
+  .ac__facts {
+    margin-top: var(--s-5);
+    padding-top: var(--s-4);
+    border-top: 1px solid var(--line-faint);
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  .ac__facts > div {
+    display: grid;
+    grid-template-columns: 6rem 1fr;
+    gap: var(--s-3);
+    align-items: baseline;
+  }
+
+  dt {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  dd {
+    margin: 0;
+    font-size: var(--t-xs);
+    color: var(--ink-2);
+  }
+
+  dd.attr-high {
+    color: var(--ok);
+  }
+  dd.attr-moderate {
+    color: var(--sev-medium);
+  }
+  dd.attr-low,
+  dd.attr-inherited {
+    color: var(--ink-3);
+  }
+</style>

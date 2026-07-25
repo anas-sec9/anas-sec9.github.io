@@ -1,0 +1,221 @@
+---
+import { href } from '../lib/url';
+
+interface Props {
+  id: string;
+  title: string;
+  summary: string;
+  format: string;
+  surface: string;
+  maturity: string;
+  severity: string;
+  attack?: { id: string; name: string }[];
+  tags?: string[];
+}
+
+const { id, title, summary, format, surface, maturity, severity, attack = [], tags = [] } = Astro.props;
+
+const maturityClass: Record<string, string> = {
+  production: 'badge--ok',
+  'lab-validated': 'badge--ok',
+  'sample-validated': 'badge--warn',
+  untested: 'badge--info',
+};
+
+const maturityLabel: Record<string, string> = {
+  production: 'Production',
+  'lab-validated': 'Lab validated',
+  'sample-validated': 'Sample validated',
+  untested: 'Untested',
+};
+---
+
+<a
+  href={href(`/detections/${id}`)}
+  class="det"
+  data-format={format}
+  data-surface={surface}
+  data-maturity={maturity}
+  data-search={`${title} ${summary} ${attack.map((a) => a.id + ' ' + a.name).join(' ')} ${tags.join(' ')}`.toLowerCase()}
+>
+  <div class="det__lead">
+    <span class="det__fmt" data-f={format}>{format}</span>
+  </div>
+
+  <div class="det__main">
+    <h3 class="det__title">{title}</h3>
+    <p class="det__sum">{summary}</p>
+    {
+      attack.length > 0 && (
+        <div class="det__attack">
+          {attack.slice(0, 4).map((a) => (
+            <span class="det__t">{a.id}</span>
+          ))}
+          {attack.length > 4 && <span class="det__t det__t--more">+{attack.length - 4}</span>}
+        </div>
+      )
+    }
+  </div>
+
+  <div class="det__side">
+    <span class:list={['badge', maturityClass[maturity]]}>{maturityLabel[maturity]}</span>
+    <span class="det__sev" data-s={severity}>{severity}</span>
+    <span class="det__surface mono">{surface}</span>
+  </div>
+</a>
+
+<style>
+  .det {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+    gap: var(--s-5);
+    padding: var(--s-5) var(--s-4);
+    border-bottom: 1px solid var(--line-faint);
+    transition: background var(--dur) var(--ease);
+    align-items: start;
+  }
+
+  .det:hover {
+    background: var(--bg-raised);
+  }
+
+  .det[hidden] {
+    display: none;
+  }
+
+  .det__fmt {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0.3em 0.55em;
+    border-radius: var(--r-1);
+    border: 1px solid var(--line-strong);
+    color: var(--ink-2);
+    background: var(--bg-raised-2);
+  }
+
+  .det__fmt[data-f='yara'] {
+    color: #e0a458;
+    border-color: rgba(224, 164, 88, 0.35);
+  }
+  .det__fmt[data-f='sigma'] {
+    color: #7fa8c9;
+    border-color: rgba(127, 168, 201, 0.35);
+  }
+  .det__fmt[data-f='suricata'],
+  .det__fmt[data-f='zeek'] {
+    color: #62b58f;
+    border-color: rgba(98, 181, 143, 0.35);
+  }
+  .det__fmt[data-f='splunk'],
+  .det__fmt[data-f='kql'],
+  .det__fmt[data-f='elastic'] {
+    color: #b28ac9;
+    border-color: rgba(178, 138, 201, 0.35);
+  }
+
+  .det__title {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--ink);
+  }
+
+  .det:hover .det__title {
+    color: var(--accent);
+  }
+
+  .det__sum {
+    margin-top: var(--s-2);
+    font-size: var(--t-xs);
+    line-height: 1.6;
+    color: var(--ink-3);
+    max-width: 62ch;
+  }
+
+  .det__attack {
+    margin-top: var(--s-3);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  .det__t {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    padding: 0.15em 0.42em;
+  }
+
+  .det__t--more {
+    color: var(--ink-4);
+  }
+
+  .det__side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--s-2);
+    flex-shrink: 0;
+  }
+
+  .det__sev {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--sc);
+  }
+
+  .det__sev[data-s='critical'] {
+    --sc: var(--sev-critical);
+  }
+  .det__sev[data-s='high'] {
+    --sc: var(--sev-high);
+  }
+  .det__sev[data-s='medium'] {
+    --sc: var(--sev-medium);
+  }
+  .det__sev[data-s='low'] {
+    --sc: var(--sev-low);
+  }
+  .det__sev[data-s='informational'] {
+    --sc: var(--sev-info);
+  }
+
+  .det__sev::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--sc);
+    margin-right: 0.5ch;
+    vertical-align: middle;
+  }
+
+  .det__surface {
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  @media (max-width: 52rem) {
+    .det {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-3);
+    }
+    .det__side {
+      flex-direction: row;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+  }
+</style>

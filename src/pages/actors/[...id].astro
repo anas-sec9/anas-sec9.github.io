@@ -1,0 +1,308 @@
+---
+import { getCollection, render } from 'astro:content';
+import type { GetStaticPaths } from 'astro';
+import Base from '../../layouts/Base.astro';
+import Attack from '../../components/Attack.astro';
+import { href, fmtStamp } from '../../lib/url';
+import '../../styles/prose.css';
+
+export const getStaticPaths = (async () => {
+  const actors = await getCollection('actors');
+  return actors
+    .filter((a) => !a.data.draft)
+    .map((actor) => ({ params: { id: actor.id }, props: { actor } }));
+}) satisfies GetStaticPaths;
+
+const { actor } = Astro.props;
+const { Content } = await render(actor);
+const a = actor.data;
+
+const research = (await getCollection('research'))
+  .filter((r) => !r.data.draft && r.data.actor === actor.id)
+  .sort((x, y) => y.data.date.valueOf() - x.data.date.valueOf());
+
+const detections = (await getCollection('detections')).filter(
+  (d) => !d.data.draft && d.data.actor === actor.id
+);
+
+const attribCopy: Record<string, string> = {
+  high: 'Reproduced from samples I analysed directly.',
+  moderate: 'Partly reproduced; some links rest on published reporting.',
+  low: 'Weak — recorded because it is plausible, not because I proved it.',
+  inherited: 'Taken from published reporting. I have not independently verified the attribution itself.',
+};
+---
+
+<Base title={a.name} description={a.summary}>
+  <header class="ah">
+    <div class="wrap wrap--wide">
+      <a href={href('/actors')} class="ah__back mono">← All actors</a>
+
+      <div class="ah__top">
+        <div>
+          <span class:list={['ah__status', `is-${a.status}`]}>{a.status}</span>
+          <h1 class="display ah__name">{a.name}</h1>
+          {a.aliases.length > 0 && <p class="ah__aliases mono">{a.aliases.join(' · ')}</p>}
+        </div>
+      </div>
+
+      <p class="ah__sum lead">{a.summary}</p>
+
+      <dl class="facts">
+        {
+          a.nexus && (
+            <div class="facts__i">
+              <dt>Nexus</dt>
+              <dd>{a.nexus}</dd>
+            </div>
+          )
+        }
+        {
+          a.firstSeen && (
+            <div class="facts__i">
+              <dt>First seen</dt>
+              <dd>{a.firstSeen}</dd>
+            </div>
+          )
+        }
+        {
+          a.motivation.length > 0 && (
+            <div class="facts__i">
+              <dt>Motivation</dt>
+              <dd>{a.motivation.join(', ')}</dd>
+            </div>
+          )
+        }
+        {
+          a.malware.length > 0 && (
+            <div class="facts__i">
+              <dt>Tooling</dt>
+              <dd>{a.malware.join(', ')}</dd>
+            </div>
+          )
+        }
+        <div class="facts__i facts__i--wide">
+          <dt>Attribution confidence</dt>
+          <dd>
+            <span class:list={['ah__attr', `is-${a.attribution}`]}>{a.attribution}</span>
+            <span class="ah__attrnote">{attribCopy[a.attribution]}</span>
+          </dd>
+        </div>
+      </dl>
+    </div>
+  </header>
+
+  <div class="wrap abody">
+    <div class="prose"><Content /></div>
+
+    {
+      a.attack.length > 0 && (
+        <div class="asect">
+          <Attack items={a.attack} label="Observed techniques" />
+        </div>
+      )
+    }
+
+    {
+      research.length > 0 && (
+        <section class="asect">
+          <p class="kicker">
+            <span class="kicker__n">→</span>
+            <span>Analysis on this actor</span>
+          </p>
+          <div class="links">
+            {research.map((r) => (
+              <a href={href(`/research/${r.id}`)} class="linkrow">
+                <span class="linkrow__date mono">{fmtStamp(r.data.date)}</span>
+                <span class="linkrow__title serif">{r.data.title}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )
+    }
+
+    {
+      detections.length > 0 && (
+        <section class="asect">
+          <p class="kicker">
+            <span class="kicker__n">→</span>
+            <span>Detections for this actor</span>
+          </p>
+          <div class="links">
+            {detections.map((d) => (
+              <a href={href(`/detections/${d.id}`)} class="linkrow">
+                <span class="linkrow__date mono">{d.data.format}</span>
+                <span class="linkrow__title serif">{d.data.title}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )
+    }
+  </div>
+</Base>
+
+<style>
+  .ah {
+    padding-top: clamp(2.5rem, 1rem + 4vw, 4.5rem);
+    padding-bottom: var(--s-6);
+    border-bottom: 1px solid var(--line);
+    background: radial-gradient(60rem 24rem at 8% -30%, rgba(224, 164, 88, 0.07), transparent 70%);
+  }
+
+  .ah__back {
+    font-size: var(--t-2xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .ah__back:hover {
+    color: var(--accent);
+  }
+
+  .ah__top {
+    margin-top: var(--s-5);
+  }
+
+  .ah__status {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6ch;
+  }
+
+  .ah__status::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .ah__status.is-tracking {
+    color: var(--ok);
+  }
+
+  .ah__name {
+    margin-top: var(--s-3);
+    font-size: var(--t-display);
+    font-weight: 500;
+  }
+
+  .ah__aliases {
+    margin-top: var(--s-3);
+    font-size: var(--t-xs);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  .ah__sum {
+    margin-top: var(--s-5);
+    max-width: 62ch;
+  }
+
+  .facts {
+    margin-top: var(--s-6);
+    padding-top: var(--s-5);
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: var(--s-5);
+  }
+
+  .facts__i--wide {
+    grid-column: 1 / -1;
+  }
+
+  dt {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  dd {
+    margin: var(--s-2) 0 0;
+    font-size: var(--t-sm);
+    color: var(--ink-2);
+  }
+
+  .ah__attr {
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0.25em 0.6em;
+    border-radius: var(--r-1);
+    border: 1px solid currentColor;
+    margin-right: var(--s-3);
+  }
+
+  .ah__attr.is-high {
+    color: var(--ok);
+  }
+  .ah__attr.is-moderate {
+    color: var(--sev-medium);
+  }
+  .ah__attr.is-low,
+  .ah__attr.is-inherited {
+    color: var(--ink-3);
+  }
+
+  .ah__attrnote {
+    font-size: var(--t-xs);
+    color: var(--ink-3);
+  }
+
+  .abody {
+    padding-block: var(--s-7);
+  }
+
+  .asect {
+    margin-top: var(--s-7);
+    padding-top: var(--s-5);
+    border-top: 1px solid var(--line);
+  }
+
+  .links {
+    margin-top: var(--s-4);
+  }
+
+  .linkrow {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: var(--s-4);
+    align-items: baseline;
+    padding: var(--s-3) var(--s-2);
+    border-bottom: 1px solid var(--line-faint);
+    transition: background var(--dur) var(--ease);
+  }
+
+  .linkrow:hover {
+    background: var(--bg-raised);
+  }
+
+  .linkrow__date {
+    font-size: var(--t-2xs);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  .linkrow__title {
+    font-size: 1.02rem;
+    color: var(--ink-2);
+  }
+
+  .linkrow:hover .linkrow__title {
+    color: var(--accent);
+  }
+</style>
